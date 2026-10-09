@@ -406,16 +406,31 @@ else if(dialog.type==='clearask'||dialog.type==='clearallask'){h='<h3>¿Vaciar h
 else if(dialog.type==='transfer'){const n=totalDay(dialog.src,dialog.scope);h='<h3>'+(dialog.origin==='tasks'?'Copiar o mover día':'Copiar programación')+'</h3><p class="sub">'+n+' tareas de '+esc(fmt(dialog.src))+' hacia '+esc(fmt(dialog.dest))+'. '+(dialog.scope==='all'?'Todos los técnicos.':'Solo '+esc(user(dialog.scope)?.name||'el técnico')+'.')+'</p><div class="stack">'+(dialog.origin==='tasks'?'<div class="row"><button class="btn ghost" data-a="copy">Copiar</button><button class="btn" data-a="move">Mover</button></div>':'<button class="btn" data-a="copy">Confirmar copia</button>')+footer+'</div>'}
 else if(dialog.type==='deleteDay'||dialog.type==='deleteJob'){h='<h3>¿Eliminar programación?</h3><p class="sub">'+(dialog.type==='deleteDay'?'Eliminar '+totalDay(dialog.src,dialog.scope)+' actividades del '+esc(fmt(dialog.src))+'.':'Eliminar la tarea seleccionada.')+'</p><div class="row">'+footer+'<button class="btn red" data-a="deleteconfirm">Eliminar</button></div>'}
 return '<div class="modalwrap '+(sheet?'sheet':'')+(dialog.type==='accountmenu'?' atm-menu-wrap':'')+'"><div class="dialog">'+h+'</div></div>'}
-let historyBooted=false,suppressHistory=false,lastHistoryJSON='';
-function snapshotState(){return {atmManager:true,meId:me?.id||null,tab,employee,thread,day,week,filter,logDay,logWeek,logEmployee,logCategory,monthCursor,ctx,dialog,draft};}
+let historyBooted=false,suppressHistory=false,lastHistoryJSON='',historyRoute='';
+let historyGroup=Number(history.state?.atmHistoryGroup)||0,highlightNotice=null,highlightWork=null;
+// Only genuine screen and modal transitions create browser history entries.
+function navRoute(){return JSON.stringify([tab,employee,thread,dialog?.type||null,dialog?.id??dialog?.taskId??null]);}
+function snapshotState(){return {atmManager:true,atmHistoryGroup:historyGroup,meId:me?.id||null,tab,employee,thread,day,week,filter,logDay,logWeek,logEmployee,logCategory,monthCursor,ctx,dialog,draft};}
 function restoreState(s){if(!me)return;tab=s?.tab||'calendar';employee=s?.employee??null;thread=s?.thread??null;day=s?.day||today;week=s?.week||day;filter=s?.filter||'all';logDay=s?.logDay||day;logWeek=s?.logWeek||logDay;logEmployee=s?.logEmployee||'all';logCategory=s?.logCategory||'all';monthCursor=s?.monthCursor||day.slice(0,7)+'-01';ctx=s?.ctx||null;dialog=s?.dialog||null;draft=s?.draft||'';error='';render();}
-function syncHistory(replace=false){const st=snapshotState(),json=JSON.stringify(st);if(suppressHistory||json===lastHistoryJSON)return;if(!historyBooted){history.replaceState({atmManager:true,atmRoot:true},'');history.pushState(st,'');historyBooted=true;}else if(replace){history.replaceState(st,'');}else history.pushState(st,'');lastHistoryJSON=json;}
+function syncHistory(replace=false){
+ const st=snapshotState(),json=JSON.stringify(st),route=navRoute();
+ if(suppressHistory||json===lastHistoryJSON)return;
+ if(!historyBooted){
+  history.replaceState({atmManager:true,atmRoot:true,atmHistoryGroup:historyGroup},'');
+  history.pushState(st,'');historyBooted=true;
+ }else if(replace||route===historyRoute)history.replaceState(st,'');
+ else history.pushState(st,'');
+ historyRoute=route;lastHistoryJSON=json;
+}
 window.addEventListener('popstate',e=>{
  if(!me)return;
- const st=e.state?.atmManager&&!e.state.atmRoot?e.state:{...snapshotState(),tab:'calendar',thread:null,employee:null,dialog:null,ctx:null,draft:''};
+ const previous=e.state?.atmManager&&!e.state.atmRoot;
+ const stale=previous&&(Number(e.state.atmHistoryGroup??0)!==historyGroup||e.state.meId!==me.id);
+ const home={...snapshotState(),tab:'calendar',thread:null,employee:null,dialog:null,ctx:null,draft:''};
+ const st=previous&&!stale?e.state:home;
  suppressHistory=true;restoreState(st);suppressHistory=false;
- lastHistoryJSON=JSON.stringify(st);historyBooted=true;
- if(!e.state?.atmManager||e.state.atmRoot){history.pushState(snapshotState(),'');lastHistoryJSON=JSON.stringify(snapshotState());}
+ lastHistoryJSON=JSON.stringify(st);historyBooted=true;historyRoute=navRoute();
+ if(!previous||stale){const current=snapshotState();history.pushState(current,'');lastHistoryJSON=JSON.stringify(current);}
 });
 
 function drawMain(keep=false){let scroll=keep?main.scrollTop:0;const isDetail=me&&tab==='chat'&&(me.role!=='admin'||thread);if(isDetail)markRead(me.role==='admin'?thread:me.id);
@@ -447,14 +462,14 @@ function send(){
   logs.push({id:nextLog++,employeeId:empId,workDay:ctx.workDay,taskType:ctx.taskType,taskId:ctx.taskId,vehicle:car,taskDetail:ctx.taskDetail,priority:ctx.priority||null,category,text,ts:sentAt});
   if(category==='Registrar bitácora')delete drafts[empId+':'+ctx.jobId];
  }
- ctx=null;draft='';adminAllowReply=false;render();notify(isAdmin?'Aviso creado para '+(user(empId)?.name||'el técnico')+' ':'Reporte enviado a administración ');
+ ctx=null;draft='';adminAllowReply=false;historyGroup++;render();notify(isAdmin?'Aviso creado para '+(user(empId)?.name||'el técnico')+' ':'Reporte enviado a administración ');
 }
 function sendTaskNote(type,id,text,allowReply){
  if(me?.role!=='admin'||!text.trim())return false;
  const record=type==='booking'?appointments.find(x=>x.id===id):jobs.find(x=>x.id===id);
  if(!record||!record.userId||!staff().some(u=>u.id===record.userId))return false;
  messages.push({id:nextMsg++,employeeId:record.userId,sender:me.id,category:'Indicación del administrador',vehicle:record.vehicle||record.title,text:text.trim(),ts:Date.now(),allowReply,replyTo:null,taskType:type,taskId:record.id,workDay:record.day});
- tab='chat';thread=record.userId;ctx=null;draft='';adminAllowReply=false;closeDialog();render();notify('Nota creada para '+(user(record.userId)?.name||'el técnico')+' ');return true;
+ tab='chat';thread=record.userId;ctx=null;draft='';adminAllowReply=false;closeDialog();historyGroup++;render();notify('Nota creada para '+(user(record.userId)?.name||'el técnico')+' ');return true;
 }
 function category(cat){const selected=opts.find(x=>x[0]===cat);if(!selected)return;if(selected[3])showDialog({type:'vehicles',category:cat});else{ctx={category:cat};closeDialog();render()}}
 function transfer(move){
