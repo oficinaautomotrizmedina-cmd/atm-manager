@@ -169,7 +169,7 @@
 }
 #app{min-height:0!important}
 #app .content{min-height:0;flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
-#app .nav{flex:0 0 auto;position:relative;z-index:3;padding-bottom:max(5px,env(safe-area-inset-bottom))}
+#app .nav{flex:0 0 auto;position:relative;z-index:3;padding-bottom:max(5px,env(safe-area-inset-bottom));width:100%;margin-top:auto}
 #app .header{flex-shrink:0}
 #app .header button.mark{width:44px;height:44px;min-width:44px;padding:2px;border:1px solid #ffffff40;border-radius:12px;display:grid;place-items:center;background:#ffffff14;overflow:hidden}
 #app .header button.mark:focus-visible,.chathead .chat-account-logo:focus-visible{outline:2px solid #daffeb;outline-offset:2px}
@@ -408,13 +408,13 @@ return '<div class="modalwrap '+(sheet?'sheet':'')+(dialog.type==='accountmenu'?
 let historyBooted=false,suppressHistory=false,lastHistoryJSON='';
 function snapshotState(){return {atmManager:true,meId:me?.id||null,tab,employee,thread,day,week,filter,logDay,logWeek,logEmployee,logCategory,monthCursor,ctx,dialog,draft};}
 function restoreState(s){if(!me)return;tab=s?.tab||'calendar';employee=s?.employee??null;thread=s?.thread??null;day=s?.day||today;week=s?.week||day;filter=s?.filter||'all';logDay=s?.logDay||day;logWeek=s?.logWeek||logDay;logEmployee=s?.logEmployee||'all';logCategory=s?.logCategory||'all';monthCursor=s?.monthCursor||day.slice(0,7)+'-01';ctx=s?.ctx||null;dialog=s?.dialog||null;draft=s?.draft||'';error='';render();}
-function syncHistory(replace=false){const st=snapshotState(),json=JSON.stringify(st);if(suppressHistory||json===lastHistoryJSON)return;if(!historyBooted||replace){history.replaceState(st,'');historyBooted=true;}else history.pushState(st,'');lastHistoryJSON=json;}
+function syncHistory(replace=false){const st=snapshotState(),json=JSON.stringify(st);if(suppressHistory||json===lastHistoryJSON)return;if(!historyBooted){history.replaceState({atmManager:true,atmRoot:true},'');history.pushState(st,'');historyBooted=true;}else if(replace){history.replaceState(st,'');}else history.pushState(st,'');lastHistoryJSON=json;}
 window.addEventListener('popstate',e=>{
  if(!me)return;
- const st=e.state?.atmManager?e.state:{...snapshotState(),tab:'calendar',thread:null,employee:null,dialog:null,ctx:null,draft:''};
+ const st=e.state?.atmManager&&!e.state.atmRoot?e.state:{...snapshotState(),tab:'calendar',thread:null,employee:null,dialog:null,ctx:null,draft:''};
  suppressHistory=true;restoreState(st);suppressHistory=false;
  lastHistoryJSON=JSON.stringify(st);historyBooted=true;
- if(!e.state?.atmManager)history.replaceState(snapshotState(),'');
+ if(!e.state?.atmManager||e.state.atmRoot){history.pushState(snapshotState(),'');lastHistoryJSON=JSON.stringify(snapshotState());}
 });
 
 function drawMain(keep=false){let scroll=keep?main.scrollTop:0;const isDetail=me&&tab==='chat'&&(me.role!=='admin'||thread);if(isDetail)markRead(me.role==='admin'?thread:me.id);
