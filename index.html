@@ -384,7 +384,7 @@ window.addEventListener('popstate',e=>{if(e.state&&e.state.atmManager){suppressH
 
 function drawMain(keep=false){let scroll=keep?main.scrollTop:0;const isDetail=me&&tab==='chat'&&(me.role!=='admin'||thread);if(isDetail)markRead(me.role==='admin'?thread:me.id);
 head.style.display=isDetail?'none':'flex';main.innerHTML=!me?loginHTML():tab==='users'?usersHTML():tab==='logs'?logsHTML():tab==='tasks'?tasksHTML():tab==='calendar'?calendarHTML():isDetail?chatHTML():inboxHTML();main.scrollTop=scroll;const msgs=main.querySelector('#messages');if(msgs)msgs.scrollTop=msgs.scrollHeight}
-function render(){root.classList.toggle('is-admin',me?.role==='admin');head.innerHTML='<span class="mark">'+logoIMG()+'</span><div class="grow"><strong>ATM Manager</strong><small>AUTOMOTRIZ MEDINA SV</small></div>'+(me?'<button data-a="openlogs" class="header-logicon'+(tab==='logs'?' on':'')+'" aria-label="Bitácoras del día" title="Bitácoras"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7a3 3 0 0 1 3 3v14H7a3 3 0 0 0-3-3V4Zm16 0h-6a3 3 0 0 0-3 3v14h6a3 3 0 0 1 3-3V4Z"/></svg></button>'+(me.role==='admin'?'<button data-a="openusers" class="header-usericon" aria-label="Administrar usuarios" title="Usuarios"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg></button>':'<button data-a="logout">Salir</button>'):'');
+function render(){root.classList.toggle('is-admin',me?.role==='admin');head.innerHTML='<span class="mark">'+logoIMG()+'</span><div class="grow"><strong>ATM Manager</strong><small>AUTOMOTRIZ MEDINA SV</small></div>'+(me?'<button data-a="atm-push-enable" style="font-size:20px;background:transparent;border:0;color:white;padding:7px 5px;cursor:pointer" aria-label="Activar notificaciones" title="Activar notificaciones">🔔</button><button data-a="openlogs" class="header-logicon'+(tab==='logs'?' on':'')+'" aria-label="Bitácoras del día" title="Bitácoras"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7a3 3 0 0 1 3 3v14H7a3 3 0 0 0-3-3V4Zm16 0h-6a3 3 0 0 0-3 3v14h6a3 3 0 0 1 3-3V4Z"/></svg></button>'+(me.role==='admin'?'<button data-a="openusers" class="header-usericon" aria-label="Administrar usuarios" title="Usuarios"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg></button>':'<button data-a="logout">Salir</button>'):'');
 if(!me){nav.style.display='none'}else{const tabs=me.role==='admin'?[['calendar','Calendario','▦'],['tasks','Tareas','☑'],['chat','Chat','▤']]:[['calendar','Calendario','▦'],['chat','IA Chat','▤']];nav.style.display='grid';nav.style.gridTemplateColumns=`repeat(${tabs.length},1fr)`;nav.innerHTML=tabs.map(([k,t,icon])=>'<button data-tab="'+k+'" class="'+(k===tab?'active':'')+'"><span class="symbol">'+icon+'</span>'+t+(k==='chat'&&totalUnread()?'<span class="nav-unread">'+totalUnread()+'</span>':'')+'</button>').join('')}
 drawMain();overlay.innerHTML=modalHTML();if(!suppressHistory){saveDemo();syncHistory()}}
 function send(){
@@ -503,6 +503,7 @@ if(f.id==='jobform'){const d=new FormData(f),title=String(d.get('title')||'').tr
 /* ATM Manager v30 cloud layer. Preserves the v28 user interface and interactions. */
 const ATM_URL='https://mnwqvzhjkkoxcjxdolac.supabase.co';
 const ATM_PUBLIC_KEY='sb_publishable_XMm90kRv73GAMI_JQlq-qw_MsZHE_HT';
+const ATM_VAPID_PUBLIC='BPWIgiK7BXJoNdzIa-xvqiHuj-Vi0iBngRybO5bBWGNbr0nMWg0q_ubp1HwOXuufDmbqPLO2XK0vTSGSEOXfSWc';
 const cloud = {sb:null,ready:false,loading:false,busy:false,lastWork:new Map(),lastNotice:new Set(),userIds:new Map(),workUiIds:new Map(),noticeUiIds:new Map(),poll:null,revision:'',writeTimer:null,realtime:null,skip:false,dirty:false,sessionId:null,retryPaused:false,expiring:false};
 const busyStatus = t => { let el=root.querySelector('#atm-cloud-status'); if(!el) {el=document.createElement('div');el.id='atm-cloud-status';el.style.cssText='position:absolute;bottom:68px;left:50%;transform:translateX(-50%);z-index:90;padding:6px 12px;border-radius:18px;background:#f5f9f5;color:#19513a;border:1px solid #d0dfd3;font-size:11px;box-shadow:0 3px 10px #0001;pointer-events:none;max-width:85%;text-align:center';root.appendChild(el)}el.textContent=t;el.style.display=t?'block':'none';el.style.pointerEvents=(cloud.retryPaused&&cloud.ready&&me)?'auto':'none';el.style.cursor=(cloud.retryPaused&&cloud.ready&&me)?'pointer':'default'; };
 const uuidFor = id => users.find(x=>x.id===Number(id))?.uuid || null;
@@ -539,6 +540,7 @@ async function atmDeliverPending(){
    if(check.error)throw check.error;
    if(!check.data){const {error:e}=await cloud.sb.from('atm_notices').insert(row);if(e)throw e;}
    atmForgetPending(row.id,id);processed++;
+    await atmPushDispatch('notice',row.id);
   }
  }catch(e){console.warn('Avisos pendientes sin confirmar',e);busyStatus('Hay avisos pendientes de enviar. Revisá tu conexión.');cloud.retryPaused=true;}
  finally{cloud.busy=false;}
@@ -602,10 +604,12 @@ async function cloudWrite(){
    for(const {item,kind} of current){
     if(!item.uuid)item.uuid=crypto.randomUUID();
     const row=rowForWork(item,kind),serialized=JSON.stringify(row);seenIds.add(item.uuid);
-    if(cloud.lastWork.get(item.uuid)===serialized)continue;
-    if(!cloud.lastWork.has(item.uuid)){const {error}=await cloud.sb.from('atm_work_items').insert({...row,created_by:me.uuid});if(error)throw error;}
+    const oldSerialized=cloud.lastWork.get(item.uuid);
+    if(oldSerialized===serialized)continue;
+    if(!oldSerialized){const {error}=await cloud.sb.from('atm_work_items').insert({...row,created_by:me.uuid});if(error)throw error;}
     else {const {error}=await cloud.sb.from('atm_work_items').update(row).eq('id',item.uuid);if(error)throw error;}
     cloud.lastWork.set(item.uuid,serialized);
+    if(row.assigned_to&&(!oldSerialized||JSON.parse(oldSerialized).assigned_to!==row.assigned_to))await atmPushDispatch('work',item.uuid);
    }
   }
   atmRememberPending();
@@ -622,6 +626,7 @@ async function cloudWrite(){
     }else throw e;
    }
    cloud.lastNotice.add(m.uuid);atmForgetPending(m.uuid,expectedId);
+   await atmPushDispatch('notice',m.uuid);
   }
   if(me.role==='admin')for(const old of [...cloud.lastWork.keys()]){
    if(seenIds.has(old))continue;
@@ -642,6 +647,97 @@ async function cloudWrite(){
  }finally{cloud.busy=false;}
 }
 root.addEventListener('click',e=>{if(e.target.closest('#atm-cloud-status')&&cloud.retryPaused&&cloud.ready&&me){cloud.retryPaused=false;cloudWrite();}});
+
+/* Web Push: registration belongs to the authenticated user and the current device. */
+const ATM_PUSH_URL=ATM_URL+'/functions/v1/atm-push';
+function atmPushKey(raw){const pad='='.repeat((4-raw.length%4)%4),data=atob((raw+pad).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(data,c=>c.charCodeAt(0))}
+async function atmPushCall(action,fields={}){
+ if(!cloud.sb||!me?.uuid)throw new Error('Iniciá sesión para utilizar notificaciones.');
+ const {data,error:se}=await cloud.sb.auth.getSession();
+ if(se||!data?.session?.access_token||data.session.user?.id!==me.uuid)throw new Error('Se necesita una sesión válida para enviar notificaciones.');
+ const response=await fetch(ATM_PUSH_URL,{method:'POST',headers:{apikey:ATM_PUBLIC_KEY,'Content-Type':'application/json',Authorization:'Bearer '+data.session.access_token},body:JSON.stringify({action,...fields})});
+ const body=await response.json().catch(()=>({}));
+ if(!response.ok)throw new Error(body.error||'No se pudo enviar la notificación.');
+ return body;
+}
+async function atmPushDispatch(action,id){
+ try{
+  if(action==='notice')return await atmPushCall('notice',{notice_id:id});
+  if(action==='work')return await atmPushCall('work',{work_id:id});
+ }catch(e){console.warn('El dato quedó guardado, pero no se pudo confirmar el push:',e.message)}
+ return null;
+}
+async function atmPushRegister(allowNew=false){
+ if(!me?.uuid||!cloud.sb)throw new Error('Ingresá con tu cuenta primero.');
+ if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window)||!window.isSecureContext)throw new Error('Este navegador no permite Web Push en esta página.');
+ if(Notification.permission!=='granted')throw new Error('Primero tenés que autorizar las notificaciones en Chrome.');
+ const reg=await navigator.serviceWorker.ready;
+ let sub=await reg.pushManager.getSubscription();
+ const oldOwner=localStorage.getItem('atm_push_owner');
+ if(sub&&oldOwner&&oldOwner!==me.uuid){await sub.unsubscribe();sub=null}
+ if(!sub&&allowNew)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:atmPushKey(ATM_VAPID_PUBLIC)});
+ if(!sub)return false;
+ const data=sub.toJSON(),keys=data.keys||{};
+ if(!data.endpoint||!keys.p256dh||!keys.auth)throw new Error('El teléfono no entregó las claves necesarias.');
+ const {error}=await cloud.sb.from('atm_push_subscriptions').upsert({user_id:me.uuid,endpoint:data.endpoint,p256dh:keys.p256dh,auth_secret:keys.auth,last_seen_at:new Date().toISOString()},{onConflict:'endpoint'});
+ if(error)throw error;
+ localStorage.setItem('atm_push_owner',me.uuid);
+ return true;
+}
+function atmPushPrompt(){
+ const old=root.querySelector('#atm-push-prompt');if(old)old.remove();
+ if(!me||!('Notification' in window)||Notification.permission!=='default')return;
+ if(localStorage.getItem('atm_push_prompted_'+me.uuid))return;
+ const notice=document.createElement('div');notice.id='atm-push-prompt';
+ notice.style.cssText='position:absolute;bottom:85px;left:12px;right:12px;z-index:95;padding:14px 12px;background:white;border:1px solid #bfd9c8;border-radius:14px;box-shadow:0 6px 20px #0002;color:#163829;font-size:13px;display:flex;gap:8px;align-items:center;';
+ notice.innerHTML='<span style="flex:1"><strong>Activar notificaciones</strong><br>Recibí avisos del taller aunque la aplicación esté cerrada.</span><button data-a="atm-push-enable" style="background:#087859;color:white;border:0;border-radius:8px;padding:9px;font-weight:700">Activar</button><button data-a="atm-push-dismiss" style="background:none;border:0;font-size:20px;color:#777" aria-label="Cerrar">×</button>';
+ root.appendChild(notice);
+}
+async function atmEnablePush(){
+ // Call requestPermission immediately from the button gesture, not after any await.
+ if(!('Notification' in window)||!('serviceWorker' in navigator)||!('PushManager' in window)||!window.isSecureContext){notify('Chrome o este dispositivo no permite las notificaciones web.');return}
+ let permission;
+ try{permission=Notification.permission==='default'?await Notification.requestPermission():Notification.permission}catch(e){notify('Chrome no pudo solicitar el permiso.');return}
+ localStorage.setItem('atm_push_prompted_'+me?.uuid,'1');root.querySelector('#atm-push-prompt')?.remove();
+ if(permission!=='granted'){notify('Notificaciones bloqueadas. Revisá los permisos del sitio en Chrome.');return}
+ try{
+  await atmPushRegister(true);
+  const result=await atmPushCall('test');
+  if(result.sent>0)notify('Notificaciones activadas. Se envió una prueba al teléfono.');
+  else if(result.failed>0)notify('El teléfono se registró, pero falló la prueba. Revisaremos el envío.');
+  else notify('Teléfono registrado. Falta confirmar el aviso de prueba.');
+ }catch(e){console.error('Error activando Web Push:',e);notify('No se pudieron activar: '+(e.message||'reintentá'))}
+}
+async function atmPushOnLogin(){
+ if(!me?.uuid)return;
+ if('Notification' in window&&Notification.permission==='granted'){
+  try{await atmPushRegister(false)}catch(e){console.warn('Actualización de Web Push pendiente',e.message)}
+ }else if('Notification' in window&&Notification.permission==='default'){
+  atmPushPrompt();
+ }
+}
+async function atmPushOnLogout(){
+ try{
+  const id=me?.uuid;
+  if(!id||!('serviceWorker' in navigator))return;
+  const reg=await navigator.serviceWorker.ready,sub=await reg.pushManager.getSubscription();
+  if(sub){
+   const endpoint=sub.endpoint;
+   await sub.unsubscribe();
+   await cloud.sb.from('atm_push_subscriptions').delete().eq('user_id',id).eq('endpoint',endpoint);
+  }
+  localStorage.removeItem('atm_push_owner');
+ }catch(e){console.warn('No se pudo desactivar la suscripción del dispositivo',e.message)}
+}
+root.addEventListener('click',event=>{
+ const on=event.target.closest('[data-a="atm-push-enable"]');
+ const off=event.target.closest('[data-a="atm-push-dismiss"]');
+ if(!on&&!off)return;
+ event.preventDefault();event.stopImmediatePropagation();
+ if(on)atmEnablePush();
+ if(off){if(me)localStorage.setItem('atm_push_prompted_'+me.uuid,'1');root.querySelector('#atm-push-prompt')?.remove()}
+},true);
+
 async function cloudAPI(b,token){const response=await fetch(ATM_URL+'/functions/v1/atm-api',{method:'POST',headers:{'Content-Type':'application/json',apikey:ATM_PUBLIC_KEY,...(token?{'Authorization':'Bearer '+token}:{})},body:JSON.stringify(b)});const d=await response.json().catch(()=>({}));if(!response.ok)throw new Error(d.error||'Error HTTP '+response.status);return d;}
 async function cloudLogin(username,password){error='';busyStatus('Ingresando…');try{
  const d=await cloudAPI({action:'login',username,password});const {data,error:e}=await cloud.sb.auth.setSession({access_token:d.access_token,refresh_token:d.refresh_token});if(e||!data.session)throw e||new Error('No se pudo iniciar sesión');
@@ -650,8 +746,12 @@ async function cloudLogin(username,password){error='';busyStatus('Ingresando…'
  }catch(e){console.error('Acceso fallido',e);error=e.message||'No se pudo iniciar sesión.';busyStatus('');render();}}
 async function cloudAfterLogin(id){const {data,error:e}=await cloud.sb.from('atm_profiles').select('*').eq('user_id',id).maybeSingle();if(e||!data?.active)throw e||new Error('La cuenta no está activa');
  cloud.userIds.set(id,1);me={uuid:id,id:1,username:data.username,name:data.display_name,role:data.role,active:data.active,is_master:data.is_master};
- tab='calendar';day=BASE;week=BASE;filter='all';employee=null;thread=null;ctx=null;dialog=null;draft='';cloud.ready=false;loadUIReadState();cloud.retryPaused=false;cloud.expiring=false;await cloudLoad();await atmDeliverPending();cloudSubscribe();}
-async function cloudLogout(){atmRememberPending();clearTimeout(cloud.writeTimer);if(cloud.busy)await new Promise(r=>setTimeout(r,800));cloud.ready=false;if(cloud.realtime)await cloud.sb.removeChannel(cloud.realtime);cloud.realtime=null;await cloud.sb.auth.signOut();me=null;users=[];jobs=[];appointments=[];messages=[];logs=[];dialog=null;tab='calendar';error='';seen={};readBy={};cloud.lastWork=new Map();cloud.lastNotice=new Set();cloud.userIds=new Map();cloud.workUiIds=new Map();cloud.noticeUiIds=new Map();busyStatus('');render();}
+ tab='calendar';day=BASE;week=BASE;filter='all';employee=null;thread=null;ctx=null;dialog=null;draft='';cloud.ready=false;loadUIReadState();cloud.retryPaused=false;cloud.expiring=false;await cloudLoad();await atmDeliverPending();cloudSubscribe();
+ setTimeout(()=>atmPushOnLogin(),0);
+ const deep=new URLSearchParams(location.search).get('aviso');
+ if(deep){const item=messages.find(x=>x.uuid===deep);if(item){tab='chat';if(me.role==='admin')thread=item.employeeId;render();}}
+}
+async function cloudLogout(){atmRememberPending();await atmPushOnLogout();clearTimeout(cloud.writeTimer);if(cloud.busy)await new Promise(r=>setTimeout(r,800));cloud.ready=false;if(cloud.realtime)await cloud.sb.removeChannel(cloud.realtime);cloud.realtime=null;await cloud.sb.auth.signOut();me=null;users=[];jobs=[];appointments=[];messages=[];logs=[];dialog=null;tab='calendar';error='';seen={};readBy={};cloud.lastWork=new Map();cloud.lastNotice=new Set();cloud.userIds=new Map();cloud.workUiIds=new Map();cloud.noticeUiIds=new Map();busyStatus('');render();}
 let refreshTimeout;
 function cloudSubscribe(){if(cloud.realtime)cloud.sb.removeChannel(cloud.realtime);cloud.realtime=cloud.sb.channel('atm-global-v30-2').on('postgres_changes',{event:'*',schema:'public',table:'atm_work_items'},()=>cloudRefresh()).on('postgres_changes',{event:'*',schema:'public',table:'atm_notices'},()=>cloudRefresh()).on('postgres_changes',{event:'*',schema:'public',table:'atm_profiles'},()=>cloudRefresh()).subscribe();}
 function cloudRefresh(){if(!me||!cloud.ready||cloud.retryPaused||cloud.expiring)return;clearTimeout(refreshTimeout);refreshTimeout=setTimeout(()=>{if(cloud.busy||dialog||draft.trim()){cloudRefresh();return}if(draftSignature()!==cloud.revision){cloudWrite();cloudRefresh();return}cloudLoad()},1200);}
@@ -667,7 +767,23 @@ async function cloudInitialize(){
  users=[];jobs=[];appointments=[];messages=[];logs=[];drafts={};nextJob=1;nextAppointment=1;nextMsg=1;nextUser=2;nextLog=1;me=null;
  day=BASE;week=BASE;logDay=BASE;logWeek=BASE;
  try{if(!window.supabase)throw new Error('No se pudo cargar Supabase. Verificá tu conexión.');cloud.sb=window.supabase.createClient(ATM_URL,ATM_PUBLIC_KEY,{auth:{autoRefreshToken:true,persistSession:true,detectSessionInUrl:false}});
- render();cloud.sb.auth.onAuthStateChange((event)=>{if(event==='SIGNED_OUT'&&me&&cloud.ready&&!cloud.expiring)setTimeout(atmRequireLogin,0)});const {data}=await cloud.sb.auth.getSession();if(data?.session)await cloudAfterLogin(data.session.user.id);
+ main.innerHTML='<div style="padding:26px;text-align:center;color:#19513a;font-size:15px">Recuperando sesión de ATM Manager…</div>';
+ cloud.sb.auth.onAuthStateChange((event)=>{if(event==='SIGNED_OUT'&&me&&cloud.ready&&!cloud.expiring)setTimeout(atmRequireLogin,0)});
+ const {data,error:sessionError}=await cloud.sb.auth.getSession();
+ if(data?.session?.user?.id){
+  try{
+   await cloudAfterLogin(data.session.user.id);
+  }catch(restoreError){
+   console.warn('No se pudo restaurar la sesión',restoreError);
+   const check=await cloud.sb.auth.getUser().catch(()=>({data:{user:null},error:true}));
+   if(check.data?.user){error='La conexión falló temporalmente. Actualizá para reintentar.'}
+   else error='Tu sesión terminó. Volvé a ingresar.';
+   render();
+  }
+ }else{
+  if(sessionError)console.warn('Sesión no recuperada',sessionError.message);
+  render();
+ }
  window.addEventListener('online',()=>cloudRefresh());document.addEventListener('visibilitychange',()=>{if(!document.hidden)cloudRefresh()});cloud.poll=setInterval(()=>{if(!document.hidden)cloudRefresh()},35000);
  }catch(e){console.error(e);error=e.message;render();}}
 cloudInitialize();
