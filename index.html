@@ -554,7 +554,7 @@ function atmRequireLogin(){
  cloud.ready=false;cloud.retryPaused=true;
  error='La sesión finalizó. Volvé a ingresar; tus avisos pendientes se conservaron en este teléfono.';
  me=null;busyStatus('');render();
- cloud.sb?.auth.signOut({scope:'local'}).catch(e=>console.warn('Fin de sesión local',e));
+ // No invalidar la sesión almacenada por un fallo temporal de red.
  cloud.expiring=false;
 }
 function draftSignature(){return JSON.stringify({works:localWorkRows().map(({item,kind})=>({kind,uuid:item.uuid,id:item.id,day:item.day,employee:item.userId,order:item.order,txt:kind==='job'?[item.title,item.detail]:[item.vehicle,item.instructions,item.serviceType,item.serviceOther,item.priority]})),messages:messages.map(x=>({uuid:x.uuid,id:x.id,category:x.category,text:x.text,replyTo:x.replyTo,emp:x.employeeId,allowReply:x.allowReply,taskType:x.taskType,taskId:x.taskId}))});}
@@ -638,7 +638,7 @@ async function cloudWrite(){
   console.error('Error de sincronización:',e);atmRememberPending();
   if(e.status===401||e.code==='42501'||e.status===403){
    try{const check=await cloud.sb.auth.getUser();
-    if(check.error||!check.data?.user||check.data.user.id!==expectedId){atmRequireLogin();return;}
+    if((check.error&&[401,403].includes(Number(check.error.status)))||(check.data?.user&&check.data.user.id!==expectedId)){atmRequireLogin();return;}
    }catch(_){}
   }
   cloud.retryPaused=true;
