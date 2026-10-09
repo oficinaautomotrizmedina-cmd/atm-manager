@@ -503,8 +503,8 @@ if(f.id==='jobform'){const d=new FormData(f),title=String(d.get('title')||'').tr
 /* ATM Manager v30 cloud layer. Preserves the v28 user interface and interactions. */
 const ATM_URL='https://mnwqvzhjkkoxcjxdolac.supabase.co';
 const ATM_PUBLIC_KEY='sb_publishable_XMm90kRv73GAMI_JQlq-qw_MsZHE_HT';
-const cloud = {sb:null,ready:false,loading:false,busy:false,lastWork:new Map(),lastNotice:new Set(),userIds:new Map(),workUiIds:new Map(),noticeUiIds:new Map(),poll:null,revision:'',writeTimer:null,realtime:null,skip:false,dirty:false,sessionId:null};
-const busyStatus = t => { let el=root.querySelector('#atm-cloud-status'); if(!el) {el=document.createElement('div');el.id='atm-cloud-status';el.style.cssText='position:absolute;bottom:68px;left:50%;transform:translateX(-50%);z-index:90;padding:6px 12px;border-radius:18px;background:#f5f9f5;color:#19513a;border:1px solid #d0dfd3;font-size:11px;box-shadow:0 3px 10px #0001;pointer-events:none;max-width:85%;text-align:center';root.appendChild(el)}el.textContent=t;el.style.display=t?'block':'none'; };
+const cloud = {sb:null,ready:false,loading:false,busy:false,lastWork:new Map(),lastNotice:new Set(),userIds:new Map(),workUiIds:new Map(),noticeUiIds:new Map(),poll:null,revision:'',writeTimer:null,realtime:null,skip:false,dirty:false,sessionId:null,retryPaused:false,expiring:false};
+const busyStatus = t => { let el=root.querySelector('#atm-cloud-status'); if(!el) {el=document.createElement('div');el.id='atm-cloud-status';el.style.cssText='position:absolute;bottom:68px;left:50%;transform:translateX(-50%);z-index:90;padding:6px 12px;border-radius:18px;background:#f5f9f5;color:#19513a;border:1px solid #d0dfd3;font-size:11px;box-shadow:0 3px 10px #0001;pointer-events:none;max-width:85%;text-align:center';root.appendChild(el)}el.textContent=t;el.style.display=t?'block':'none';el.style.pointerEvents=(cloud.retryPaused&&cloud.ready&&me)?'auto':'none';el.style.cursor=(cloud.retryPaused&&cloud.ready&&me)?'pointer':'default'; };
 const uuidFor = id => users.find(x=>x.id===Number(id))?.uuid || null;
 const uiFor = uuid => users.find(x=>x.uuid===uuid)?.id ?? null;
 function persistUIReadState(){try{if(me?.uuid)localStorage.setItem('atm_read_'+me.uuid,JSON.stringify({seen,readBy,drafts}))}catch(_){}}
@@ -512,8 +512,51 @@ function loadUIReadState(){seen={};readBy={};try{const d=JSON.parse(localStorage
 function localWorkRows(){return [...jobs.map(x=>({item:x,kind:'job'})),...appointments.map(x=>({item:x,kind:'booking'}))];}
 function rowForWork(x,kind){return {id:x.uuid,kind,vehicle:kind==='job'?x.title:x.vehicle,instructions:kind==='job'?x.detail:x.instructions,service_type:kind==='booking'?(x.serviceType||'Por definir'):'Por definir',service_other:kind==='booking'?(x.serviceOther||''):'',priority:kind==='booking'?(x.priority||'yellow'):'yellow',work_day:x.day,assigned_to:uuidFor(x.userId),sort_order:x.order??null};}
 function uiForWork(row){const kind=row.kind,known=cloud.workUiIds.get(row.id);const num=known?.id??(kind==='job'?nextJob++:nextAppointment++);cloud.workUiIds.set(row.id,{id:num,kind});const basic={uuid:row.id,userId:uiFor(row.assigned_to),day:row.work_day,order:row.sort_order??null};if(kind==='job')return {...basic,id:num,title:row.vehicle,detail:row.instructions||''};return {...basic,id:num,vehicle:row.vehicle,instructions:row.instructions||'',serviceType:row.service_type||'Por definir',serviceOther:row.service_other||'',priority:row.priority||'yellow'};}
+const ATM_OUTBOX_PREFIX='atm_manager_pending_';
+function atmOutboxKey(id){return ATM_OUTBOX_PREFIX+id;}
+function atmReadOutbox(id){try{const rows=JSON.parse(localStorage.getItem(atmOutboxKey(id))||'[]');return Array.isArray(rows)?rows:[]}catch(_){return []}}
+function atmRememberPending(){
+ if(!me?.uuid)return;
+ const map=new Map(atmReadOutbox(me.uuid).filter(x=>x?.id).map(x=>[x.id,x]));
+ for(const m of messages){
+   if(m.uuid&&cloud.lastNotice.has(m.uuid))continue;
+   if(!m.uuid)m.uuid=crypto.randomUUID();
+   const row=rowForMessage(m);
+   if(row.author_id===me.uuid&&row.target_employee_id&&row.body?.trim())map.set(row.id,row);
+ }
+ try{localStorage.setItem(atmOutboxKey(me.uuid),JSON.stringify([...map.values()].slice(-100)))}catch(e){console.warn('No se pudo guardar aviso pendiente',e)}
+}
+function atmForgetPending(id,author){if(!author||!id)return;try{const keep=atmReadOutbox(author).filter(x=>x.id!==id);if(keep.length)localStorage.setItem(atmOutboxKey(author),JSON.stringify(keep));else localStorage.removeItem(atmOutboxKey(author))}catch(_){}}
+async function atmDeliverPending(){
+ if(!me?.uuid||!cloud.ready)return;
+ const id=me.uuid,pending=atmReadOutbox(id);if(!pending.length)return;
+ cloud.busy=true;
+ let processed=0;
+ try{
+  for(const row of pending){
+   if(row.author_id!==id)continue;
+   const check=await cloud.sb.from('atm_notices').select('id').eq('id',row.id).maybeSingle();
+   if(check.error)throw check.error;
+   if(!check.data){const {error:e}=await cloud.sb.from('atm_notices').insert(row);if(e)throw e;}
+   atmForgetPending(row.id,id);processed++;
+  }
+ }catch(e){console.warn('Avisos pendientes sin confirmar',e);busyStatus('Hay avisos pendientes de enviar. Revisá tu conexión.');cloud.retryPaused=true;}
+ finally{cloud.busy=false;}
+ if(processed)await cloudLoad();
+}
+function atmRequireLogin(){
+ if(cloud.expiring||!me)return;
+ cloud.expiring=true;
+ atmRememberPending();
+ clearTimeout(cloud.writeTimer);clearTimeout(refreshTimeout);
+ cloud.ready=false;cloud.retryPaused=true;
+ error='La sesión finalizó. Volvé a ingresar; tus avisos pendientes se conservaron en este teléfono.';
+ me=null;busyStatus('');render();
+ cloud.sb?.auth.signOut({scope:'local'}).catch(e=>console.warn('Fin de sesión local',e));
+ cloud.expiring=false;
+}
 function draftSignature(){return JSON.stringify({works:localWorkRows().map(({item,kind})=>({kind,uuid:item.uuid,id:item.id,day:item.day,employee:item.userId,order:item.order,txt:kind==='job'?[item.title,item.detail]:[item.vehicle,item.instructions,item.serviceType,item.serviceOther,item.priority]})),messages:messages.map(x=>({uuid:x.uuid,id:x.id,category:x.category,text:x.text,replyTo:x.replyTo,emp:x.employeeId,allowReply:x.allowReply,taskType:x.taskType,taskId:x.taskId}))});}
-function cloudChange(){persistUIReadState();if(!cloud.ready||cloud.skip||!me)return;const sig=draftSignature();if(sig===cloud.revision)return;clearTimeout(cloud.writeTimer);cloud.writeTimer=setTimeout(cloudWrite,160);}
+function cloudChange(){persistUIReadState();if(!cloud.ready||cloud.skip||!me)return;const sig=draftSignature();if(sig===cloud.revision)return;atmRememberPending();cloud.retryPaused=false;clearTimeout(cloud.writeTimer);cloud.writeTimer=setTimeout(cloudWrite,160);}
 const rowForMessage = m => {
  const ownTask=m.taskType==='job'?jobs.find(x=>x.id===m.taskId):appointments.find(x=>x.id===m.taskId);
  const parent=messages.find(x=>x.id===m.replyTo);
@@ -543,30 +586,62 @@ async function cloudLoad(){if(!cloud.sb||cloud.busy||cloud.loading||!me)return;c
  cloud.lastWork=new Map(localWorkRows().map(({item,kind})=>[item.uuid,JSON.stringify(rowForWork(item,kind))]));cloud.lastNotice=new Set(messages.map(x=>x.uuid));cloud.revision=draftSignature();cloud.ready=true;cloud.skip=false;
  if(me&&tab==='users'&&me.role!=='admin')tab='calendar';render();
  }catch(e){console.error('No se pudo descargar la información',e);busyStatus('Sin sincronizar · Revisá tu conexión');}finally{cloud.skip=false;cloud.loading=false;}}
-async function cloudWrite(){if(!cloud.ready||!me||cloud.busy||cloud.loading)return;
+async function cloudWrite(){
+ if(!cloud.ready||!me||cloud.busy||cloud.loading||cloud.retryPaused||cloud.expiring)return;
  if(draftSignature()===cloud.revision)return;
- cloud.busy=true;busyStatus('Sincronizando…');try{
- const current=localWorkRows();const seenIds=new Set();
- if(me.role==='admin'){
- for(const {item,kind} of current){if(!item.uuid)item.uuid=crypto.randomUUID();const row=rowForWork(item,kind),serialized=JSON.stringify(row);seenIds.add(item.uuid);
- if(cloud.lastWork.get(item.uuid)===serialized)continue;
- if(!cloud.lastWork.has(item.uuid)){const {error}=await cloud.sb.from('atm_work_items').insert({...row,created_by:me.uuid});if(error)throw error;}
- else {const {error}=await cloud.sb.from('atm_work_items').update(row).eq('id',item.uuid);if(error)throw error;}
- cloud.lastWork.set(item.uuid,serialized);
- }
- }
- // Insert notices after work assignments, to guarantee valid foreign keys.
- for(const m of messages){if(m.uuid&&cloud.lastNotice.has(m.uuid))continue;
- if(!m.uuid)m.uuid=crypto.randomUUID();const row=rowForMessage(m);
- if(!row.author_id||!row.target_employee_id)throw new Error('Destinatario no identificado.');
- const {error}=await cloud.sb.from('atm_notices').insert(row);if(error)throw error;
- cloud.lastNotice.add(m.uuid);
- }
- if(me.role==='admin')for(const old of [...cloud.lastWork.keys()]){if(seenIds.has(old))continue;const {error}=await cloud.sb.from('atm_work_items').delete().eq('id',old);if(error)throw error;cloud.lastWork.delete(old)}
- cloud.revision=draftSignature();busyStatus('Guardado en Supabase');setTimeout(()=>{if(!cloud.busy)busyStatus('')},1800);
- }catch(e){console.error('Error de sincronización:',e);busyStatus('Error al guardar: '+(e.message||'reintentá'));notify('No se pudo guardar en Supabase. Revisá la conexión.');}
- finally{cloud.busy=false;if(cloud.revision!==draftSignature())setTimeout(cloudWrite,1200);}
+ // Never send writes when the browser has lost the authenticated session.
+ const expectedId=me.uuid;
+ try{
+  const {data,error:sessionErr}=await cloud.sb.auth.getSession();
+  if(sessionErr||!data?.session?.access_token||data.session.user?.id!==expectedId){atmRequireLogin();return;}
+ }catch(e){cloud.retryPaused=true;busyStatus('Sin conexión. Tocá este aviso para reintentar.');return;}
+ cloud.busy=true;busyStatus('Sincronizando…');
+ try{
+  const current=localWorkRows(),seenIds=new Set();
+  if(me.role==='admin'){
+   for(const {item,kind} of current){
+    if(!item.uuid)item.uuid=crypto.randomUUID();
+    const row=rowForWork(item,kind),serialized=JSON.stringify(row);seenIds.add(item.uuid);
+    if(cloud.lastWork.get(item.uuid)===serialized)continue;
+    if(!cloud.lastWork.has(item.uuid)){const {error}=await cloud.sb.from('atm_work_items').insert({...row,created_by:me.uuid});if(error)throw error;}
+    else {const {error}=await cloud.sb.from('atm_work_items').update(row).eq('id',item.uuid);if(error)throw error;}
+    cloud.lastWork.set(item.uuid,serialized);
+   }
+  }
+  atmRememberPending();
+  for(const m of messages){
+   if(m.uuid&&cloud.lastNotice.has(m.uuid))continue;
+   if(!m.uuid)m.uuid=crypto.randomUUID();
+   const row=rowForMessage(m);
+   if(!row.author_id||!row.target_employee_id)throw new Error('Destinatario no identificado.');
+   const {error:e}=await cloud.sb.from('atm_notices').insert(row);
+   if(e){
+    if(e.code==='23505'){
+     const chk=await cloud.sb.from('atm_notices').select('id').eq('id',m.uuid).maybeSingle();
+     if(chk.error||!chk.data)throw e;
+    }else throw e;
+   }
+   cloud.lastNotice.add(m.uuid);atmForgetPending(m.uuid,expectedId);
+  }
+  if(me.role==='admin')for(const old of [...cloud.lastWork.keys()]){
+   if(seenIds.has(old))continue;
+   const {error:e}=await cloud.sb.from('atm_work_items').delete().eq('id',old);if(e)throw e;cloud.lastWork.delete(old);
+  }
+  cloud.revision=draftSignature();busyStatus('Guardado en Supabase');
+  setTimeout(()=>{if(!cloud.busy&&!cloud.retryPaused)busyStatus('')},1800);
+ }catch(e){
+  console.error('Error de sincronización:',e);atmRememberPending();
+  if(e.status===401||e.code==='42501'||e.status===403){
+   try{const check=await cloud.sb.auth.getUser();
+    if(check.error||!check.data?.user||check.data.user.id!==expectedId){atmRequireLogin();return;}
+   }catch(_){}
+  }
+  cloud.retryPaused=true;
+  busyStatus('Error al sincronizar. Tocá aquí para reintentar.');
+  notify('El aviso todavía no se guardó. Revisá la conexión.');
+ }finally{cloud.busy=false;}
 }
+root.addEventListener('click',e=>{if(e.target.closest('#atm-cloud-status')&&cloud.retryPaused&&cloud.ready&&me){cloud.retryPaused=false;cloudWrite();}});
 async function cloudAPI(b,token){const response=await fetch(ATM_URL+'/functions/v1/atm-api',{method:'POST',headers:{'Content-Type':'application/json',apikey:ATM_PUBLIC_KEY,...(token?{'Authorization':'Bearer '+token}:{})},body:JSON.stringify(b)});const d=await response.json().catch(()=>({}));if(!response.ok)throw new Error(d.error||'Error HTTP '+response.status);return d;}
 async function cloudLogin(username,password){error='';busyStatus('Ingresando…');try{
  const d=await cloudAPI({action:'login',username,password});const {data,error:e}=await cloud.sb.auth.setSession({access_token:d.access_token,refresh_token:d.refresh_token});if(e||!data.session)throw e||new Error('No se pudo iniciar sesión');
@@ -575,11 +650,11 @@ async function cloudLogin(username,password){error='';busyStatus('Ingresando…'
  }catch(e){console.error('Acceso fallido',e);error=e.message||'No se pudo iniciar sesión.';busyStatus('');render();}}
 async function cloudAfterLogin(id){const {data,error:e}=await cloud.sb.from('atm_profiles').select('*').eq('user_id',id).maybeSingle();if(e||!data?.active)throw e||new Error('La cuenta no está activa');
  cloud.userIds.set(id,1);me={uuid:id,id:1,username:data.username,name:data.display_name,role:data.role,active:data.active,is_master:data.is_master};
- tab='calendar';day=BASE;week=BASE;filter='all';employee=null;thread=null;ctx=null;dialog=null;draft='';cloud.ready=false;loadUIReadState();await cloudLoad();cloudSubscribe();}
-async function cloudLogout(){clearTimeout(cloud.writeTimer);if(cloud.busy)await new Promise(r=>setTimeout(r,800));cloud.ready=false;if(cloud.realtime)await cloud.sb.removeChannel(cloud.realtime);cloud.realtime=null;await cloud.sb.auth.signOut();me=null;users=[];jobs=[];appointments=[];messages=[];logs=[];dialog=null;tab='calendar';error='';seen={};readBy={};cloud.lastWork=new Map();cloud.lastNotice=new Set();cloud.userIds=new Map();cloud.workUiIds=new Map();cloud.noticeUiIds=new Map();busyStatus('');render();}
+ tab='calendar';day=BASE;week=BASE;filter='all';employee=null;thread=null;ctx=null;dialog=null;draft='';cloud.ready=false;loadUIReadState();cloud.retryPaused=false;cloud.expiring=false;await cloudLoad();await atmDeliverPending();cloudSubscribe();}
+async function cloudLogout(){atmRememberPending();clearTimeout(cloud.writeTimer);if(cloud.busy)await new Promise(r=>setTimeout(r,800));cloud.ready=false;if(cloud.realtime)await cloud.sb.removeChannel(cloud.realtime);cloud.realtime=null;await cloud.sb.auth.signOut();me=null;users=[];jobs=[];appointments=[];messages=[];logs=[];dialog=null;tab='calendar';error='';seen={};readBy={};cloud.lastWork=new Map();cloud.lastNotice=new Set();cloud.userIds=new Map();cloud.workUiIds=new Map();cloud.noticeUiIds=new Map();busyStatus('');render();}
 let refreshTimeout;
-function cloudSubscribe(){if(cloud.realtime)cloud.sb.removeChannel(cloud.realtime);cloud.realtime=cloud.sb.channel('atm-global-v30').on('postgres_changes',{event:'*',schema:'public',table:'atm_work_items'},()=>cloudRefresh()).on('postgres_changes',{event:'*',schema:'public',table:'atm_notices'},()=>cloudRefresh()).on('postgres_changes',{event:'*',schema:'public',table:'atm_profiles'},()=>cloudRefresh()).subscribe();}
-function cloudRefresh(){if(!me||!cloud.ready)return;clearTimeout(refreshTimeout);refreshTimeout=setTimeout(()=>{if(cloud.busy||dialog||draft.trim()){cloudRefresh();return}if(draftSignature()!==cloud.revision){cloudWrite();cloudRefresh();return}cloudLoad()},1200);}
+function cloudSubscribe(){if(cloud.realtime)cloud.sb.removeChannel(cloud.realtime);cloud.realtime=cloud.sb.channel('atm-global-v30-2').on('postgres_changes',{event:'*',schema:'public',table:'atm_work_items'},()=>cloudRefresh()).on('postgres_changes',{event:'*',schema:'public',table:'atm_notices'},()=>cloudRefresh()).on('postgres_changes',{event:'*',schema:'public',table:'atm_profiles'},()=>cloudRefresh()).subscribe();}
+function cloudRefresh(){if(!me||!cloud.ready||cloud.retryPaused||cloud.expiring)return;clearTimeout(refreshTimeout);refreshTimeout=setTimeout(()=>{if(cloud.busy||dialog||draft.trim()){cloudRefresh();return}if(draftSignature()!==cloud.revision){cloudWrite();cloudRefresh();return}cloudLoad()},1200);}
 async function cloudUserForm(f){const d=new FormData(f),name=String(d.get('name')||'').trim(),username=String(d.get('username')||'').trim(),password=String(d.get('password')||''),old=user(dialog?.id),role=String(d.get('role')||'employee');const err=overlay.querySelector('#usererror');
  if(!name||!/^[a-z0-9_]{2,32}$/i.test(username)||(!old&&password.length<10)||(old&&password&&password.length<10)){if(err){err.style.display='block';err.textContent='Usuario: letras, números o guion bajo; contraseña: mínimo 10 caracteres.'}return}
  try{busyStatus('Guardando cuenta…');const {data:{session},error:sessionError}=await cloud.sb.auth.getSession();if(sessionError||!session?.access_token)throw new Error('Tu sesión expiró. Cerrá sesión e ingresá de nuevo.');await cloudAPI({action:old?'update':'create',...(old?{user_id:old.uuid}:{}),username,display_name:name,role,active:old?d.get('active')==='true':true,...(password?{password}:{})},session?.access_token);const created=!old;closeDialog();await cloudLoad();if(created)showDialog({type:'created',username,password});else notify('Cuenta actualizada');busyStatus('');}
@@ -592,7 +667,7 @@ async function cloudInitialize(){
  users=[];jobs=[];appointments=[];messages=[];logs=[];drafts={};nextJob=1;nextAppointment=1;nextMsg=1;nextUser=2;nextLog=1;me=null;
  day=BASE;week=BASE;logDay=BASE;logWeek=BASE;
  try{if(!window.supabase)throw new Error('No se pudo cargar Supabase. Verificá tu conexión.');cloud.sb=window.supabase.createClient(ATM_URL,ATM_PUBLIC_KEY,{auth:{autoRefreshToken:true,persistSession:true,detectSessionInUrl:false}});
- render();const {data}=await cloud.sb.auth.getSession();if(data?.session)await cloudAfterLogin(data.session.user.id);
+ render();cloud.sb.auth.onAuthStateChange((event)=>{if(event==='SIGNED_OUT'&&me&&cloud.ready&&!cloud.expiring)setTimeout(atmRequireLogin,0)});const {data}=await cloud.sb.auth.getSession();if(data?.session)await cloudAfterLogin(data.session.user.id);
  window.addEventListener('online',()=>cloudRefresh());document.addEventListener('visibilitychange',()=>{if(!document.hidden)cloudRefresh()});cloud.poll=setInterval(()=>{if(!document.hidden)cloudRefresh()},35000);
  }catch(e){console.error(e);error=e.message;render();}}
 cloudInitialize();
