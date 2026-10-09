@@ -179,6 +179,13 @@
 #app .atm-menu-wrap .dialog{max-width:310px;width:min(90%,310px);max-height:calc(100% - 76px);border-radius:14px;padding:13px;gap:8px;box-shadow:0 8px 30px #001a1640}
 #app .atm-menu-wrap .opt{padding:10px 11px}
 #app .atm-menu-wrap .atm-menu-logout strong{color:#9b312b!important;-webkit-text-fill-color:#9b312b!important}
+#app .atm-calendar-news{padding:12px;border:1px solid #e7cfcf;background:#fff;border-radius:12px;display:flex;flex-direction:column;gap:8px}
+#app .atm-calendar-news .atm-news-head{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#5a2e2e;font-size:13px}
+#app .atm-calendar-news .atm-news-item{display:flex;width:100%;border:1px solid #ecd9d9;background:#fffafa;border-radius:9px;padding:10px;text-align:left;color:#283f33;gap:9px;align-items:center}
+#app .atm-calendar-news .atm-news-item .details{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}
+#app .atm-calendar-news .atm-news-item strong{font-size:12px;overflow-wrap:anywhere}
+#app .atm-calendar-news .atm-news-item small{font-size:11px;color:#635a55;line-height:1.4;overflow-wrap:anywhere}
+#app .atm-new-label{display:inline-block;margin-left:5px;padding:3px 6px;border-radius:6px;background:#fce6e4;color:#b72b27;font-size:10px;font-weight:900}
 #app .atm-push-target{outline:3px solid #eab54c!important;outline-offset:2px;box-shadow:0 0 0 4px #f8e0a280!important}
 #app .chatframe{min-height:0;height:100%}
 #app .chathead{flex-shrink:0}
@@ -190,7 +197,7 @@
 'use strict';
 const root=document.querySelector('#app'),head=root.querySelector('#head'),main=root.querySelector('#main'),nav=root.querySelector('#nav'),overlay=root.querySelector('#overlay'),bin=root.querySelector('#trash');
 const BASE=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/El_Salvador',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()),TODAY=BASE,today=BASE;
-let users=[],jobs=[],messages=[],logs=[],drafts={};
+let users=[],jobs=[],messages=[],logs=[],drafts={},calendarChanges=[];
 let nextUser=2,nextJob=1,nextMsg=1,nextLog=1;
 // Agendamientos de ejemplo: categorías de atención, no un semáforo de urgencia.
 let appointments=[];
@@ -226,12 +233,53 @@ const list=(id,d)=>jobs.filter(x=>x.userId===Number(id)&&x.day===d).sort((a,b)=>
 const onDay=(d,scope)=>jobs.filter(x=>x.day===d&&(scope==='all'||(scope!=='pending'&&x.userId===Number(scope))));
 const convo=(id)=>messages.filter(x=>x.employeeId===Number(id)&&x.id>(seen[me.id+':'+id]||0));
 const msgThreadId=()=>me?.role==='admin'?thread:me?.id;
-const unreadCount=(id)=>!me?0:messages.filter(x=>x.employeeId===Number(id)&&x.sender!==me.id&&x.id>(readBy[me.id+':'+id]||0)).length;
+const unreadCount=(id)=>!me?0:messages.filter(x=>x.employeeId===Number(id)&&x.sender!==me.id&&x.uuid&&!cloud.readNoticeIds.has(x.uuid)).length;
 const totalUnread=()=>!me?0:me.role==='admin'?staff().reduce((n,x)=>n+unreadCount(x.id),0):unreadCount(me.id);
-function markRead(id){if(!me||!id)return;readBy[me.id+':'+id]=Math.max(readBy[me.id+':'+id]||0,0,...messages.filter(x=>x.employeeId===id).map(x=>x.id))}
+const unreadCalendar=()=>!me||me.role==='admin'?[]:calendarChanges.filter(c=>c.recipient_id===me.uuid&&!c.read_at&&!cloud.readCalendarIds.has(c.id));
+function markRead(id){
+ if(!me||!id||!cloud.sb)return;
+ const author=me.uuid,unread=messages.filter(m=>m.employeeId===Number(id)&&m.sender!==me.id&&m.uuid&&!cloud.readNoticeIds.has(m.uuid)).map(m=>m.uuid);
+ if(!unread.length)return;
+ unread.forEach(x=>cloud.readNoticeIds.add(x));
+ cloud.sb.from('atm_notice_reads').insert(unread.map(notice_id=>({notice_id,user_id:author}))).then(({error})=>{
+  if(error&&error.code!=='23505'){
+   unread.forEach(x=>cloud.readNoticeIds.delete(x));
+   console.warn('No se pudieron confirmar los mensajes leídos',error.message);
+   if(me?.uuid===author){notify('No se pudo guardar la lectura del chat.');render();}
+  }
+ }).catch(e=>{unread.forEach(x=>cloud.readNoticeIds.delete(x));console.warn('Fallo lectura chat',e);});
+}
+function markCalendarChangeRead(c){
+ if(!c||c.read_at||!me||c.recipient_id!==me.uuid||!cloud.sb)return;
+ const account=me.uuid,previous=c.read_at;
+ c.read_at=new Date().toISOString();cloud.readCalendarIds.add(c.id);
+ cloud.sb.from('atm_calendar_changes').update({read_at:c.read_at}).eq('id',c.id).eq('recipient_id',account).then(({error})=>{
+  if(error){
+   c.read_at=previous;cloud.readCalendarIds.delete(c.id);
+   console.warn('No se pudo marcar cambio de calendario',error.message);
+   if(me?.uuid===account){notify('No se guardó la lectura. Reintentá.');render();}
+  }
+ }).catch(e=>{c.read_at=previous;cloud.readCalendarIds.delete(c.id);console.warn('Error de lectura calendario',e)});
+}
+function viewCalendarChange(id){
+ if(!me||me.role==='admin')return;
+ const c=calendarChanges.find(x=>x.id===id&&x.recipient_id===me.uuid);if(!c)return;
+ markCalendarChangeRead(c);
+ tab='calendar';day=c.work_day;week=c.work_day;employee=null;thread=null;ctx=null;dialog=null;draft='';
+ if(me.role==='supervisor')filter=String(me.id);
+ highlightWork=c.work_item_id||null;
+ render();
+}
+function calendarNewsHTML(){
+ const list=unreadCalendar().slice().sort((a,b)=>b.created_at.localeCompare(a.created_at));
+ if(!list.length)return '';
+ return '<section class="atm-calendar-news"><div class="atm-news-head"><strong>Novedades del calendario</strong><span class="nav-unread">'+list.length+'</span></div>'+
+ list.slice(0,6).map(c=>'<button type="button" class="atm-news-item" data-a="atm-open-calendar-change" data-id="'+esc(c.id)+'"><span class="atm-new-label">'+(c.change_type==='assigned'?'NUEVO':'CAMBIO')+'</span><span class="details"><strong>'+esc(c.vehicle)+'</strong><small>'+esc(c.detail)+'</small><small>'+esc(fmt(c.work_day))+'</small></span><span>›</span></button>').join('')+
+ (list.length>6?'<small class="sub">Abrí los avisos para ver los '+(list.length-6)+' siguientes.</small>':'')+'</section>';
+}
 const noteFor=(kind,id)=>messages.filter(x=>x.category==='Indicación del administrador'&&x.taskType===kind&&Number(x.taskId)===Number(id)).slice(-1)[0];
 const canReplyTo=(m)=>!!(me&&me.role!=='admin'&&m&&m.employeeId===me.id&&m.sender!==me.id&&m.allowReply&&!messages.some(x=>x.sender===me.id&&x.replyTo===m.id));
-function noteInCalendar(kind,id){if(!me||me.role==='admin')return '';const n=noteFor(kind,id);if(n&&n.employeeId!==me.id)return '';return n?'<span class="task-admin-note"><b>📣 Indicación de administración</b><span>'+esc(n.text.length>125?n.text.slice(0,125)+'…':n.text)+'</span>'+(canReplyTo(n)?'<em>Podés responder desde IA Chat</em>':'')+'</span>':''}
+function noteInCalendar(kind,id){if(!me||me.role==='admin')return '';const n=noteFor(kind,id);if(n&&n.employeeId!==me.id)return '';return n?'<span class="task-admin-note"><b>📣 Indicaciones de Grok</b><span>'+esc(n.text.length>125?n.text.slice(0,125)+'…':n.text)+'</span>'+(canReplyTo(n)?'<em>Podés responder desde IA Chat</em>':'')+'</span>':''}
 
 const opts=[['Informar avance','Seleccionar vehículo e informar el avance','📝',true],['Reportar problema','Seleccionar vehículo y describir el problema','⚠',true],['Consultas y solicitudes','Repuestos, autorizaciones y consultas','❔',false],['Registrar bitácora','Seleccionar vehículo y registrar trabajo','📖',true],['Asuntos administrativos','Sugerencias y asuntos internos','🏢',false]];
 const logCategoryLabels={'Registrar bitácora':'Bitácora','Informar avance':'Avance','Reportar problema':'Problema'};
@@ -282,7 +330,7 @@ function jobsGroup(u){
 function calendarHTML(){
  const manager=me.role!=='employee',scope=manager?filter:me.id,groups=manager?(filter==='all'?staff():filter==='none'?[]:[user(filter)].filter(Boolean)):[me];
  const countBookings=bookingsDay(day,scope).length,countTasks=onDay(day,scope).length;
- return '<div class="page">'+heading('Calendario',me.role==='admin'?'':manager?'PROGRAMACIÓN GENERAL':'MIS ACTIVIDADES')+
+ return '<div class="page">'+heading('Calendario',me.role==='admin'?'':manager?'PROGRAMACIÓN GENERAL':'MIS ACTIVIDADES')+calendarNewsHTML()+
  (me.role==='admin'?'<button class="agenda-cta" data-a="newbooking"><span style="font-size:20px;line-height:1">＋</span> Agendar vehículo</button>':'')+
  (me.role==='admin'?'':(totalUnread()?'<button class="incoming-notice" data-a="gotonotices">🔔 '+totalUnread()+' aviso'+(totalUnread()===1?'':'s')+' nuevo'+(totalUnread()===1?'':'s')+' · Ver en IA Chat ›</button>':'')+'<div class="agenda-legend"><span class="legend-chip"><i class="legend-dot red"></i>Garantía / Alta</span><span class="legend-chip"><i class="legend-dot yellow"></i>Nivel técnico</span><span class="legend-chip"><i class="legend-dot green"></i>Nivel ingeniería</span></div>')+
  calWeek(scope)+
@@ -313,8 +361,10 @@ function chatHTML(){
  const avatarHTML=isAdmin?'<button class="chat-account-logo" data-a="atm-account-menu" aria-label="Opciones del taller">'+chatLogoIMG()+'</button><span class="avatar">'+esc(u.name.charAt(0))+'</span>':'<button class="avatar logoavatar chat-account-logo" data-a="atm-account-menu" aria-label="Opciones del taller">'+chatLogoIMG()+'</button>';
  const html=ms.map(m=>{
   const mine=m.sender===me.id,wasAnswered=messages.some(x=>x.sender===me.id&&x.replyTo===m.id);
+  const fromGrok=users.some(u=>u.id===m.sender&&u.role==='admin');
+  const displayCategory=fromGrok?(m.category==='Indicación del administrador'?'Indicaciones de Grok':'Grok'+(m.category&&m.category!=='Aviso general'?' · '+m.category:'')):m.category;
   return '<div class="bubble '+(mine?'mine':'')+(m.category==='Indicación del administrador'?' instruction':'')+'" data-notice-uuid="'+esc(m.uuid||'')+'">'+
-   (m.category?'<span class="cat">'+esc(m.category)+'</span><div></div>':'')+
+   (displayCategory?'<span class="cat">'+esc(displayCategory)+'</span><div></div>':'')+
    (m.vehicle?'<span class="small">🚘 '+esc(m.vehicle)+'</span>':'')+
    (m.replyTo?'<span class="small">↳ Respuesta a instrucción</span>':'')+
    esc(m.text)+
@@ -448,7 +498,7 @@ if(highlightWork&&tab==='calendar'){
  highlightWork=null;
 }}
 function render(){root.classList.toggle('is-admin',me?.role==='admin');head.innerHTML='<button type="button" class="mark" data-a="atm-account-menu" aria-label="Abrir menú del taller" title="Opciones del taller">'+logoIMG()+'</button><div class="grow"><strong>ATM Manager</strong><small>AUTOMOTRIZ MEDINA SV</small></div>'+(me?'<button data-a="openlogs" class="header-logicon'+(tab==='logs'?' on':'')+'" aria-label="Bitácoras del día" title="Bitácoras"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7a3 3 0 0 1 3 3v14H7a3 3 0 0 0-3-3V4Zm16 0h-6a3 3 0 0 0-3 3v14h6a3 3 0 0 1 3-3V4Z"/></svg></button>':'');
-if(!me||(tab==='chat'&&(me?.role!=='admin'||thread))){nav.style.display='none'}else{const tabs=me.role==='admin'?[['calendar','Calendario','▦'],['tasks','Tareas','☑'],['chat','Chat','▤']]:[['calendar','Calendario','▦'],['chat','IA Chat','▤']];nav.style.display='grid';nav.style.gridTemplateColumns=`repeat(${tabs.length},1fr)`;nav.innerHTML=tabs.map(([k,t,icon])=>'<button data-tab="'+k+'" class="'+(k===tab?'active':'')+'"><span class="symbol">'+icon+'</span>'+t+(k==='chat'&&totalUnread()?'<span class="nav-unread">'+totalUnread()+'</span>':'')+'</button>').join('')}
+if(!me||(tab==='chat'&&(me?.role!=='admin'||thread))){nav.style.display='none'}else{const tabs=me.role==='admin'?[['calendar','Calendario','▦'],['tasks','Tareas','☑'],['chat','Chat','▤']]:[['calendar','Calendario','▦'],['chat','IA Chat','▤']];nav.style.display='grid';nav.style.gridTemplateColumns=`repeat(${tabs.length},1fr)`;nav.innerHTML=tabs.map(([k,t,icon])=>'<button data-tab="'+k+'" class="'+(k===tab?'active':'')+'"><span class="symbol">'+icon+'</span>'+t+(k==='chat'&&totalUnread()?'<span class="nav-unread">'+totalUnread()+'</span>':k==='calendar'&&unreadCalendar().length?'<span class="nav-unread">'+unreadCalendar().length+'</span>':'')+'</button>').join('')}
 drawMain();overlay.innerHTML=modalHTML();if(!suppressHistory){saveDemo();syncHistory()}}
 function send(){
  const text=draft.trim();if(!text||!me)return;
@@ -541,7 +591,7 @@ function pointerEnd(e,success){
 
 window.addEventListener('pointerup',e=>pointerEnd(e,true));window.addEventListener('pointercancel',e=>pointerEnd(e,false));
 root.addEventListener('input',e=>{if(e.target.id==='draft')draft=e.target.value});root.addEventListener('change',e=>{if(e.target.id==='filter'){filter=e.target.value;render()}else if(e.target.id==='logperson'&&me?.role==='admin'){logEmployee=e.target.value;render()}else if(e.target.id==='logcategory'){logCategory=e.target.value;render()}else if(e.target.id==='allowReply'){adminAllowReply=e.target.checked}else if(e.target.id==='serviceType'){const other=overlay.querySelector('#serviceOtherWrap');if(other)other.style.display=e.target.value==='Otro'?'flex':'none'}});
-root.addEventListener('click',e=>{if(Date.now()<blockedClick&&(e.target.closest('[data-a="date"]')||e.target.closest('[data-a="editjob"]')))return;const navbtn=e.target.closest('[data-tab]');if(navbtn){tab=navbtn.dataset.tab;employee=null;thread=null;ctx=null;draft='';closeDialog();render();return}const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a;if(a==='close'){closeDialog();return}if(a==='atm-account-menu'){if(me)showDialog({type:'accountmenu'});return}if(a==='backcalendar'){tab='calendar';thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='logout'){logout();return}if(a==='openusers'){tab='users';employee=null;thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='openlogs'){logDay=(tab==='calendar'?day:logDay);logWeek=logDay;logEmployee='all';logCategory='all';tab='logs';thread=null;employee=null;ctx=null;draft='';closeDialog();render();return}if(a==='logsdate'){logDay=day;logWeek=day;logEmployee='all';logCategory='all';tab='logs';closeDialog();render();return}if(a==='logprev'||a==='lognext'){logDay=dayAdd(logDay,a==='logprev'?-7:7);logWeek=logDay;render();return}if(a==='logdate'){logDay=b.dataset.day;logWeek=logDay;render();return}if(a==='openlog'){const entry=logs.find(x=>x.id===Number(b.dataset.id));if(entry&&(me.role==='admin'||entry.employeeId===me.id))showDialog({type:'logdetail',id:entry.id});return}if(a==='newuser'){showDialog({type:'newuser'});return}if(a==='edituser'){showDialog({type:'edituser',id:Number(b.dataset.id)});return}if(a==='showmonth'&&me?.role==='admin'&&tab==='calendar'){monthCursor=day.slice(0,7)+'-01';showDialog({type:'monthpicker'});return}if(a==='monthprev'||a==='monthnext'){const mm=new Date(monthCursor+'T12:00:00Z');mm.setUTCMonth(mm.getUTCMonth()+(a==='monthprev'?-1:1));monthCursor=mm.toISOString().slice(0,7)+'-01';showDialog({type:'monthpicker'});return}if(a==='monthdate'){day=b.dataset.day;week=day;closeDialog();render();return}if(a==='newbooking'){showDialog({type:'newbooking'});return}if(a==='editbooking'){const ap=appointments.find(x=>x.id===Number(b.dataset.booking));if(ap){day=ap.day;week=ap.day;showDialog({type:'editbooking',id:ap.id})}return}if(a==='askdeletebooking'){showDialog({type:'deleteBooking',id:dialog.id});return}if(a==='confirmdeletebooking'){const prev=appointments.find(x=>x.id===dialog.id);appointments=appointments.filter(x=>x.id!==dialog.id);if(prev)renumber(prev.userId,prev.day);closeDialog();render();notify('Agendamiento eliminado');return}if(a==='newjob'){showDialog({type:'newjob'});return}if(a==='editjob'){showDialog({type:'editjob',id:Number(b.dataset.job)});return}if(a==='prev'||a==='next'){day=dayAdd(day,a==='prev'?-7:7);week=day;render();return}if(a==='date'){day=b.dataset.day;week=day;render();return}if(a==='employee'){employee=Number(b.dataset.id);render();return}if(a==='pending'){employee='pending';filter='all';render();return}if(a==='backemployee'){employee=null;render();return}if(a==='openchat'){thread=Number(b.dataset.id);ctx=null;draft='';adminAllowReply=false;render();return}if(a==='gotonotices'){tab='chat';thread=null;ctx=null;draft='';render();return}if(a==='replyinstruction'){const m=messages.find(x=>x.id===Number(b.dataset.id));if(canReplyTo(m)){ctx={category:'Respuesta a instrucción',replyTo:m.id,vehicle:m.vehicle||null,taskType:m.taskType||null,taskId:m.taskId||null};draft='';render();setTimeout(()=>main.querySelector('#draft')?.focus(),0)}return}if(a==='notebooking'||a==='notejob'){if(me?.role!=='admin')return;showDialog({type:'adminnote',taskType:a==='notebooking'?'booking':'job',taskId:Number(b.dataset.id)});return}if(a==='backchat'){thread=null;render();return}if(a==='plus'){showDialog({type:'categories'});return}if(a==='category'){category(b.dataset.cat);return}if(a==='backcategories'){showDialog({type:'categories'});return}if(a==='selectbooking'){const ap=appointments.find(x=>x.id===Number(b.dataset.booking)&&x.userId===me.id);if(ap){ctx={category:dialog.category,vehicle:ap.vehicle,jobId:'a'+ap.id,bookingId:ap.id,taskType:'booking',taskId:ap.id,taskDetail:ap.instructions,workDay:ap.day,priority:ap.priority};draft=dialog.category==='Registrar bitácora'?drafts[me.id+':'+ctx.jobId]||'':'';closeDialog();render()}return}if(a==='selectcar'){const j=jobs.find(x=>x.id===Number(b.dataset.job)&&x.userId===me.id);if(j){ctx={category:dialog.category,vehicle:j.title,jobId:j.id,taskType:'job',taskId:j.id,taskDetail:j.detail,workDay:j.day,priority:null};draft=dialog.category==='Registrar bitácora'?drafts[me.id+':'+j.id]||'':'';closeDialog();render()}return}if(a==='clearctx'){ctx=null;draft='';render();return}if(a==='savedraft'){if(ctx?.jobId)drafts[me.id+':'+ctx.jobId]=draft;ctx=null;draft='';render();notify('Bitácora guardada como borrador');return}if(a==='chatmenu'||a==='allmenu'){showDialog({type:a});return}if(a==='viewlogs'){showDialog({type:'logs'});return}if(a==='clearask'||a==='clearallask'){showDialog({type:a});return}if(a==='clearconfirm'){clearChats();return}if(a==='copy'||a==='move'){transfer(a==='move');return}if(a==='deleteconfirm'){removeStuff();return}});
+root.addEventListener('click',e=>{if(Date.now()<blockedClick&&(e.target.closest('[data-a="date"]')||e.target.closest('[data-a="editjob"]')))return;const navbtn=e.target.closest('[data-tab]');if(navbtn){tab=navbtn.dataset.tab;employee=null;thread=null;ctx=null;draft='';closeDialog();render();return}const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a;if(a==='atm-open-calendar-change'){viewCalendarChange(b.dataset.id);return}if(a==='close'){closeDialog();return}if(a==='atm-account-menu'){if(me)showDialog({type:'accountmenu'});return}if(a==='backcalendar'){tab='calendar';thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='logout'){logout();return}if(a==='openusers'){tab='users';employee=null;thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='openlogs'){logDay=(tab==='calendar'?day:logDay);logWeek=logDay;logEmployee='all';logCategory='all';tab='logs';thread=null;employee=null;ctx=null;draft='';closeDialog();render();return}if(a==='logsdate'){logDay=day;logWeek=day;logEmployee='all';logCategory='all';tab='logs';closeDialog();render();return}if(a==='logprev'||a==='lognext'){logDay=dayAdd(logDay,a==='logprev'?-7:7);logWeek=logDay;render();return}if(a==='logdate'){logDay=b.dataset.day;logWeek=logDay;render();return}if(a==='openlog'){const entry=logs.find(x=>x.id===Number(b.dataset.id));if(entry&&(me.role==='admin'||entry.employeeId===me.id))showDialog({type:'logdetail',id:entry.id});return}if(a==='newuser'){showDialog({type:'newuser'});return}if(a==='edituser'){showDialog({type:'edituser',id:Number(b.dataset.id)});return}if(a==='showmonth'&&me?.role==='admin'&&tab==='calendar'){monthCursor=day.slice(0,7)+'-01';showDialog({type:'monthpicker'});return}if(a==='monthprev'||a==='monthnext'){const mm=new Date(monthCursor+'T12:00:00Z');mm.setUTCMonth(mm.getUTCMonth()+(a==='monthprev'?-1:1));monthCursor=mm.toISOString().slice(0,7)+'-01';showDialog({type:'monthpicker'});return}if(a==='monthdate'){day=b.dataset.day;week=day;closeDialog();render();return}if(a==='newbooking'){showDialog({type:'newbooking'});return}if(a==='editbooking'){const ap=appointments.find(x=>x.id===Number(b.dataset.booking));if(ap){day=ap.day;week=ap.day;showDialog({type:'editbooking',id:ap.id})}return}if(a==='askdeletebooking'){showDialog({type:'deleteBooking',id:dialog.id});return}if(a==='confirmdeletebooking'){const prev=appointments.find(x=>x.id===dialog.id);appointments=appointments.filter(x=>x.id!==dialog.id);if(prev)renumber(prev.userId,prev.day);closeDialog();render();notify('Agendamiento eliminado');return}if(a==='newjob'){showDialog({type:'newjob'});return}if(a==='editjob'){showDialog({type:'editjob',id:Number(b.dataset.job)});return}if(a==='prev'||a==='next'){day=dayAdd(day,a==='prev'?-7:7);week=day;render();return}if(a==='date'){day=b.dataset.day;week=day;render();return}if(a==='employee'){employee=Number(b.dataset.id);render();return}if(a==='pending'){employee='pending';filter='all';render();return}if(a==='backemployee'){employee=null;render();return}if(a==='openchat'){thread=Number(b.dataset.id);ctx=null;draft='';adminAllowReply=false;render();return}if(a==='gotonotices'){tab='chat';thread=null;ctx=null;draft='';render();return}if(a==='replyinstruction'){const m=messages.find(x=>x.id===Number(b.dataset.id));if(canReplyTo(m)){ctx={category:'Respuesta a instrucción',replyTo:m.id,vehicle:m.vehicle||null,taskType:m.taskType||null,taskId:m.taskId||null};draft='';render();setTimeout(()=>main.querySelector('#draft')?.focus(),0)}return}if(a==='notebooking'||a==='notejob'){if(me?.role!=='admin')return;showDialog({type:'adminnote',taskType:a==='notebooking'?'booking':'job',taskId:Number(b.dataset.id)});return}if(a==='backchat'){thread=null;render();return}if(a==='plus'){showDialog({type:'categories'});return}if(a==='category'){category(b.dataset.cat);return}if(a==='backcategories'){showDialog({type:'categories'});return}if(a==='selectbooking'){const ap=appointments.find(x=>x.id===Number(b.dataset.booking)&&x.userId===me.id);if(ap){ctx={category:dialog.category,vehicle:ap.vehicle,jobId:'a'+ap.id,bookingId:ap.id,taskType:'booking',taskId:ap.id,taskDetail:ap.instructions,workDay:ap.day,priority:ap.priority};draft=dialog.category==='Registrar bitácora'?drafts[me.id+':'+ctx.jobId]||'':'';closeDialog();render()}return}if(a==='selectcar'){const j=jobs.find(x=>x.id===Number(b.dataset.job)&&x.userId===me.id);if(j){ctx={category:dialog.category,vehicle:j.title,jobId:j.id,taskType:'job',taskId:j.id,taskDetail:j.detail,workDay:j.day,priority:null};draft=dialog.category==='Registrar bitácora'?drafts[me.id+':'+j.id]||'':'';closeDialog();render()}return}if(a==='clearctx'){ctx=null;draft='';render();return}if(a==='savedraft'){if(ctx?.jobId)drafts[me.id+':'+ctx.jobId]=draft;ctx=null;draft='';render();notify('Bitácora guardada como borrador');return}if(a==='chatmenu'||a==='allmenu'){showDialog({type:a});return}if(a==='viewlogs'){showDialog({type:'logs'});return}if(a==='clearask'||a==='clearallask'){showDialog({type:a});return}if(a==='clearconfirm'){clearChats();return}if(a==='copy'||a==='move'){transfer(a==='move');return}if(a==='deleteconfirm'){removeStuff();return}});
 root.addEventListener('submit',e=>{e.preventDefault();const f=e.target;if(f.id==='login'){const d=new FormData(f);doLogin(d.get('username'),d.get('password'));return}if(f.id==='userform'){const d=new FormData(f),name=String(d.get('name')||'').trim(),username=String(d.get('username')||'').trim(),password=String(d.get('password')||''),old=user(dialog.id),dupe=users.some(u=>u.username.toLowerCase()===username.toLowerCase()&&u.id!==old?.id);const err=overlay.querySelector('#usererror');if(!name||!/^[a-z0-9._-]+$/i.test(username)||dupe||(!old&&password.length<6)||(old&&password&&password.length<6)){err.style.display='block';err.textContent='Verificá los datos: usuario único sin espacios y contraseña mínima de 6 caracteres.';return}if(old){old.name=name;old.username=username;if(password)old.password=password;old.role=d.get('role');old.active=d.get('active')==='true';closeDialog();render();notify('Cuenta actualizada')}else{users.push({id:nextUser++,name,username,password,role:d.get('role'),active:true});saveDemo();showDialog({type:'created',username,password})}return}if(f.id==='notetaskform'){if(me?.role!=='admin')return;const d=new FormData(f);sendTaskNote(dialog.taskType,dialog.taskId,String(d.get('text')||''),d.get('allowReply')==='on');return}if(f.id==='bookingform'){
  if(me?.role!=='admin')return;
  const form=new FormData(f),vehicle=String(form.get('vehicle')||'').trim(),instructions=String(form.get('instructions')||'').trim(),assignedRaw=String(form.get('assigned')||''),assigned=assignedRaw===''?null:Number(assignedRaw),priority=String(form.get('priority')||''),serviceType=String(form.get('serviceType')||'Por definir'),serviceOther=String(form.get('serviceOther')||'').trim();
@@ -567,7 +617,7 @@ if(f.id==='jobform'){const d=new FormData(f),title=String(d.get('title')||'').tr
 const ATM_URL='https://mnwqvzhjkkoxcjxdolac.supabase.co';
 const ATM_PUBLIC_KEY='sb_publishable_XMm90kRv73GAMI_JQlq-qw_MsZHE_HT';
 const ATM_VAPID_PUBLIC='BPWIgiK7BXJoNdzIa-xvqiHuj-Vi0iBngRybO5bBWGNbr0nMWg0q_ubp1HwOXuufDmbqPLO2XK0vTSGSEOXfSWc';
-const cloud = {sb:null,ready:false,loading:false,busy:false,lastWork:new Map(),lastNotice:new Set(),userIds:new Map(),workUiIds:new Map(),noticeUiIds:new Map(),poll:null,revision:'',writeTimer:null,realtime:null,skip:false,dirty:false,sessionId:null,retryPaused:false,expiring:false};
+const cloud = {readNoticeIds:new Set(),readCalendarIds:new Set(),sb:null,ready:false,loading:false,busy:false,lastWork:new Map(),lastNotice:new Set(),userIds:new Map(),workUiIds:new Map(),noticeUiIds:new Map(),poll:null,revision:'',writeTimer:null,realtime:null,skip:false,dirty:false,sessionId:null,retryPaused:false,expiring:false};
 const busyStatus = t => { let el=root.querySelector('#atm-cloud-status'); if(!el) {el=document.createElement('div');el.id='atm-cloud-status';el.style.cssText='position:absolute;bottom:68px;left:50%;transform:translateX(-50%);z-index:90;padding:6px 12px;border-radius:18px;background:#f5f9f5;color:#19513a;border:1px solid #d0dfd3;font-size:11px;box-shadow:0 3px 10px #0001;pointer-events:none;max-width:85%;text-align:center';root.appendChild(el)}el.textContent=t;el.style.display=t?'block':'none';el.style.pointerEvents=(cloud.retryPaused&&cloud.ready&&me)?'auto':'none';el.style.cursor=(cloud.retryPaused&&cloud.ready&&me)?'pointer':'default'; };
 const uuidFor = id => users.find(x=>x.id===Number(id))?.uuid || null;
 const uiFor = uuid => users.find(x=>x.uuid===uuid)?.id ?? null;
@@ -640,7 +690,12 @@ function reportLogs(){logs=[];nextLog=1;messages.forEach(m=>{if(!['Informar avan
  logs.push({id:nextLog++,employeeId:m.employeeId,workDay,taskType:m.taskType||'booking',taskId:m.taskId,vehicle:m.vehicle||w?.vehicle||w?.title||'Actividad',taskDetail:m.taskDetail||w?.instructions||w?.detail||'',priority:m.priority||w?.priority||null,category:m.category,text:m.text,ts:m.ts}); });}
 async function cloudList(table,order){const all=[];for(let offset=0;offset<10000;offset+=500){let q=cloud.sb.from(table).select('*').range(offset,offset+499);if(order)q=q.order(order,{ascending:true});const {data,error}=await q;if(error)throw error;all.push(...(data||[]));if((data||[]).length<500)break;}return all;}
 async function cloudLoad(){if(!cloud.sb||cloud.busy||cloud.loading||!me)return;cloud.loading=true;const priorUuid=me.uuid;try{
- const [profiles,remoteWork,remoteMessages]=await Promise.all([cloudList('atm_profiles','created_at'),cloudList('atm_work_items','work_day'),cloudList('atm_notices','created_at')]);
+ const [profiles,remoteWork,remoteMessages,readResult,remoteCalendar]=await Promise.all([
+  cloudList('atm_profiles','created_at'),cloudList('atm_work_items','work_day'),cloudList('atm_notices','created_at'),
+  cloud.sb.from('atm_notice_reads').select('notice_id').eq('user_id',priorUuid),
+  cloudList('atm_calendar_changes','created_at')
+ ]);
+ if(readResult.error)throw readResult.error;
  cloud.skip=true;
  const oldIds=cloud.userIds;
  users=profiles.map(p=>{let id=oldIds.get(p.user_id);if(!id){id=p.is_master?1:Math.max(nextUser,2);while([...oldIds.values()].includes(id))id++;oldIds.set(p.user_id,id);nextUser=Math.max(nextUser,id+1)}return {id,uuid:p.user_id,username:p.username,name:p.display_name,role:p.role,is_master:p.is_master,active:p.active}});
@@ -648,6 +703,8 @@ async function cloudLoad(){if(!cloud.sb||cloud.busy||cloud.loading||!me)return;c
  const workByUuid=new Map();jobs=[];appointments=[];
  for(const row of remoteWork){const item=uiForWork(row);workByUuid.set(row.id,item);if(row.kind==='job')jobs.push(item);else appointments.push(item)}
  messages=remoteMessages.map(row=>noticeToUI(row,workByUuid));const byUuid=new Map(messages.map(m=>[m.uuid,m.id]));messages.forEach(m=>{m.replyTo=m.replyUuid?(byUuid.get(m.replyUuid)||null):null;});reportLogs();
+  cloud.readNoticeIds=new Set([...cloud.readNoticeIds,...(readResult.data||[]).map(r=>r.notice_id)]);
+  calendarChanges=(remoteCalendar||[]).filter(c=>c.recipient_id===priorUuid);
  cloud.lastWork=new Map(localWorkRows().map(({item,kind})=>[item.uuid,JSON.stringify(rowForWork(item,kind))]));cloud.lastNotice=new Set(messages.map(x=>x.uuid));cloud.revision=draftSignature();cloud.ready=true;cloud.skip=false;
  if(me&&tab==='users'&&me.role!=='admin')tab='calendar';render();
  }catch(e){console.error('No se pudo descargar la información',e);busyStatus('Sin sincronizar · Revisá tu conexión');}finally{cloud.skip=false;cloud.loading=false;}}
@@ -817,7 +874,7 @@ async function cloudAfterLogin(id){const {data,error:e}=await cloud.sb.from('atm
   if(item){tab='chat';thread=me.role==='admin'?item.employeeId:null;ctx=null;dialog=null;draft='';highlightNotice=noticeId;render();opened=true;}
  }else if(workId){
   const item=[...appointments,...jobs].find(x=>x.uuid===workId);
-  if(item){tab='calendar';day=item.day;week=item.day;employee=null;thread=null;ctx=null;dialog=null;draft='';if(me.role==='admin')filter='all';else if(me.role==='supervisor')filter=String(item.userId||'all');highlightWork=workId;render();opened=true;}
+  if(item){tab='calendar';day=item.day;week=item.day;employee=null;thread=null;ctx=null;dialog=null;draft='';if(me.role==='admin')filter='all';else if(me.role==='supervisor')filter=String(item.userId||'all');calendarChanges.filter(c=>c.work_item_id===workId&&c.recipient_id===me.uuid).forEach(markCalendarChangeRead);highlightWork=workId;render();opened=true;}
  }
  if(opened){
   const clean=new URL(location.href);clean.searchParams.delete('aviso');clean.searchParams.delete('trabajo');
@@ -825,7 +882,7 @@ async function cloudAfterLogin(id){const {data,error:e}=await cloud.sb.from('atm
   lastHistoryJSON=JSON.stringify(snapshotState());
  }
 }
-async function cloudLogout(){atmRememberPending();await atmPushOnLogout();clearTimeout(cloud.writeTimer);if(cloud.busy)await new Promise(r=>setTimeout(r,800));cloud.ready=false;if(cloud.realtime)await cloud.sb.removeChannel(cloud.realtime);cloud.realtime=null;await cloud.sb.auth.signOut();me=null;users=[];jobs=[];appointments=[];messages=[];logs=[];dialog=null;tab='calendar';error='';seen={};readBy={};cloud.lastWork=new Map();cloud.lastNotice=new Set();cloud.userIds=new Map();cloud.workUiIds=new Map();cloud.noticeUiIds=new Map();busyStatus('');render();}
+async function cloudLogout(){atmRememberPending();await atmPushOnLogout();clearTimeout(cloud.writeTimer);if(cloud.busy)await new Promise(r=>setTimeout(r,800));cloud.ready=false;if(cloud.realtime)await cloud.sb.removeChannel(cloud.realtime);cloud.realtime=null;await cloud.sb.auth.signOut();me=null;users=[];jobs=[];appointments=[];messages=[];logs=[];dialog=null;tab='calendar';error='';seen={};readBy={};cloud.lastWork=new Map();cloud.lastNotice=new Set();cloud.readNoticeIds=new Set();cloud.readCalendarIds=new Set();calendarChanges=[];cloud.userIds=new Map();cloud.workUiIds=new Map();cloud.noticeUiIds=new Map();busyStatus('');render();}
 let refreshTimeout;
 function cloudSubscribe(){if(cloud.realtime)cloud.sb.removeChannel(cloud.realtime);cloud.realtime=cloud.sb.channel('atm-global-v30-2').on('postgres_changes',{event:'*',schema:'public',table:'atm_work_items'},()=>cloudRefresh()).on('postgres_changes',{event:'*',schema:'public',table:'atm_notices'},()=>cloudRefresh()).on('postgres_changes',{event:'*',schema:'public',table:'atm_profiles'},()=>cloudRefresh()).subscribe();}
 function cloudRefresh(){if(!me||!cloud.ready||cloud.retryPaused||cloud.expiring)return;clearTimeout(refreshTimeout);refreshTimeout=setTimeout(()=>{if(cloud.busy||dialog||draft.trim()){cloudRefresh();return}if(draftSignature()!==cloud.revision){cloudWrite();cloudRefresh();return}cloudLoad()},1200);}
