@@ -748,7 +748,7 @@ let historyBooted=false,suppressHistory=false,lastHistoryJSON='',historyRoute=''
 let historyGroup=Number(history.state?.atmHistoryGroup)||0,highlightNotice=null,highlightWork=null;
 // Only genuine screen and modal transitions create browser history entries.
 function navRoute(){return JSON.stringify([tab,employee,thread,dialog?.type||null,dialog?.id??dialog?.taskId??null]);}
-function snapshotState(){return {atmManager:true,atmHistoryGroup:historyGroup,meId:me?.id||null,tab,employee,thread,day,week,filter,logDay,logWeek,logEmployee,logCategory,monthCursor,ctx,dialog,draft};}
+function snapshotState(){return {atmManager:true,atmHistoryGroup:historyGroup,meId:me?.id||null,tab,employee,thread,day,week,filter,logDay,logWeek,logEmployee,logCategory,monthCursor,ctx,dialog:dialog?.type==='created'?null:dialog,draft};}
 function restoreState(s){atmClockDismiss();if(!me)return;tab=s?.tab||'calendar';employee=s?.employee??null;thread=s?.thread??null;day=s?.day||today;week=s?.week||day;filter=s?.filter||'all';logDay=s?.logDay||day;logWeek=s?.logWeek||logDay;logEmployee=s?.logEmployee||'all';logCategory=s?.logCategory||'all';monthCursor=s?.monthCursor||day.slice(0,7)+'-01';ctx=s?.ctx||null;dialog=s?.dialog||null;draft=s?.draft||'';error='';render();}
 function syncHistory(replace=false){
  const st=snapshotState(),json=JSON.stringify(st),route=navRoute();
