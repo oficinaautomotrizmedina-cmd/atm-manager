@@ -366,7 +366,7 @@ function logsHTML(){const own=me?.role!=='admin',entries=relevantLogs(logDay,log
 function notify(t){const n=root.querySelector('#toast');n.textContent=t;n.style.display='block';clearTimeout(toastTimer);toastTimer=setTimeout(()=>n.style.display='none',2600)}
 function heading(t,k){return '<div>'+(k?'<div class="overline">'+esc(k)+'</div>':'')+'<h2 class="ttl">'+esc(t)+'</h2></div>'}
 function showDialog(o){dialog=o;overlay.innerHTML=modalHTML();syncHistory();}
-function closeDialog(){const wasOpen=!!dialog;dialog=null;overlay.innerHTML='';if(wasOpen&&historyBooted&&!suppressHistory)syncHistory(true);}
+function closeDialog(){atmClockDismiss();const wasOpen=!!dialog;dialog=null;overlay.innerHTML='';if(wasOpen&&historyBooted&&!suppressHistory)syncHistory(true);}
 function doLogin(u,p){return cloudLogin(u,p)}
 function logout(){me=null;tab='calendar';employee=null;thread=null;ctx=null;draft='';closeDialog();saveDemo();render()}
 function loginHTML(){return '<div class="page login">'+logoIMG('loginlogo')+'<div style="text-align:center">'+heading('Ingresar a ATM Manager','AUTOMOTRIZ MEDINA SV')+'</div><form class="card" id="login"><label class="field">Usuario<input name="username" autocomplete="username" required></label><label class="field">Contraseña<input name="password" type="password" autocomplete="current-password" required></label>'+(error?'<div class="alert">'+esc(error)+'</div>':'')+'<button class="btn" type="submit">Ingresar</button></form></div>'}
@@ -439,6 +439,119 @@ function chatHTML(){
  '<textarea id="draft" placeholder="'+placeholder+'" rows="1" '+(!isAdmin&&!ctx?'disabled':'')+'>'+esc(draft)+'</textarea><button class="round send" type="submit" '+(!isAdmin&&!ctx?'disabled':'')+' aria-label="Enviar">➤</button></form>'+
  (ctx?.category==='Registrar bitácora'?'<div style="padding:0 10px 10px;background:#edf5ee"><button class="btn ghost" style="width:100%" data-a="savedraft">Guardar borrador de bitácora</button></div>':'')+'</div>';
 }
+/* Selector analógico de 12 horas, solo para agendamientos. */
+let atmClock=null;
+function atmClockDismiss(){
+ atmClock=null;
+ root.querySelector('#atm-clock-root')?.remove();
+}
+function atmClockOpen(field){
+ if(me?.role!=='admin'||!['newbooking','editbooking'].includes(dialog?.type)||!['start','end'].includes(field))return;
+ const form=overlay.querySelector('#bookingform'),input=form?.elements.namedItem(field==='start'?'receptionStart':'receptionEnd');
+ if(!input)return;
+ const raw=/^\d{2}:\d{2}$/.test(input.value)?input.value:(field==='start'?'09:00':'11:00');
+ const hour24=Number(raw.slice(0,2));
+ atmClock={field,step:'hour',hour:hour24%12||12,minute:Number(raw.slice(3,5)),period:hour24>=12?'PM':'AM'};
+ atmClockDraw();
+}
+function atmClockDraw(){
+ if(!atmClock)return;
+ let layer=root.querySelector('#atm-clock-root');
+ if(!layer){layer=document.createElement('div');layer.id='atm-clock-root';layer.className='atm-clock-layer';root.appendChild(layer)}
+ const c=atmClock,isHour=c.step==='hour',selected=isHour?c.hour%12:c.minute;
+ const angle=isHour?selected*30:c.minute*6;
+ const positions=Array.from({length:12},(_,i)=>{
+  const value=isHour?(i||12):i*5;
+  const a=i*Math.PI/6;
+  const dx=Math.round(Math.sin(a)*105),dy=-Math.round(Math.cos(a)*105);
+  const active=isHour?c.hour===value:c.minute===value;
+  const label=isHour?String(value):String(value).padStart(2,'0');
+  return '<button type="button" data-a="atm-clock-value" data-value="'+value+'" class="atm-clock-number'+(active?' selected':'')+'" style="left:calc(50% + '+dx+'px);top:calc(50% + '+dy+'px)" aria-label="'+(isHour?'Hora ':'Minuto ')+label+'" aria-pressed="'+active+'">'+label+'</button>';
+ }).join('');
+ const title=c.field==='start'?'Hora de recepción':'Hora de finalización';
+ layer.innerHTML='<div class="atm-clock-panel" role="dialog" aria-modal="true" aria-label="'+title+'">'+
+  '<div class="atm-clock-heading"><strong>'+title+'</strong><button type="button" data-a="atm-clock-dismiss" aria-label="Cerrar selector">×</button></div>'+
+  '<div class="atm-clock-display">'+
+   '<button type="button" data-a="atm-clock-segment" data-step="hour" class="atm-clock-segment'+(isHour?' selected':'')+'">'+String(c.hour).padStart(2,'0')+'</button>'+
+   '<span class="atm-clock-colon">:</span>'+
+   '<button type="button" data-a="atm-clock-segment" data-step="minute" class="atm-clock-segment'+(!isHour?' selected':'')+'">'+String(c.minute).padStart(2,'0')+'</button>'+
+   '<div class="atm-clock-periods">'+
+    '<button type="button" data-a="atm-clock-period" data-period="AM" class="'+(c.period==='AM'?'selected':'')+'" aria-pressed="'+(c.period==='AM')+'">a. m.</button>'+
+    '<button type="button" data-a="atm-clock-period" data-period="PM" class="'+(c.period==='PM'?'selected':'')+'" aria-pressed="'+(c.period==='PM')+'">p. m.</button>'+
+   '</div></div>'+
+  '<div class="atm-clock-steptext">'+(isHour?'Seleccioná primero la hora':'Ahora seleccioná los minutos')+'</div>'+
+  '<div class="atm-clock-dial" aria-label="'+(isHour?'Reloj de horas':'Reloj de minutos')+'">'+
+   '<span class="atm-clock-hand" style="transform:rotate('+angle+'deg)"></span>'+
+   positions+'<span class="atm-clock-center"></span></div>'+
+  (!isHour?'<div class="atm-clock-adjust"><button type="button" data-a="atm-clock-adjust" data-delta="-1" aria-label="Restar un minuto">−</button><span>Ajustar 1 minuto</span><button type="button" data-a="atm-clock-adjust" data-delta="1" aria-label="Sumar un minuto">+</button></div>':'')+
+  '<div class="atm-clock-actions"><button type="button" data-a="atm-clock-dismiss">Cancelar</button><button type="button" class="done" data-a="atm-clock-done">Listo</button></div></div>';
+}
+function atmClockSelect(value){
+ if(!atmClock)return;
+ if(atmClock.step==='hour'){
+  if(!Number.isInteger(value)||value<1||value>12)return;
+  atmClock.hour=value;atmClock.step='minute';
+ }else{
+  if(!Number.isInteger(value)||value<0||value>59)return;
+  atmClock.minute=value;
+ }
+ atmClockDraw();
+}
+function atmClockCommit(){
+ if(!atmClock)return;
+ const c=atmClock,form=overlay.querySelector('#bookingform');
+ if(!form){atmClockDismiss();return}
+ const h=(c.hour%12)+(c.period==='PM'?12:0);
+ const value=String(h).padStart(2,'0')+':'+String(c.minute).padStart(2,'0');
+ const field=c.field,part=field==='start'?'receptionStart':'receptionEnd',input=form.elements.namedItem(part);
+ if(!input)return;
+ if(field==='start'&&value>='23:59'){notify('Elegí una hora inicial anterior a las 11:59 p. m.');return}
+ input.value=value;
+ const label=form.querySelector('#atm-clock-label-'+field);
+ if(label)label.textContent=receptionHour(value);
+ if(field==='start'){
+  const end=addReceptionHours(value);
+  const endInput=form.elements.namedItem('receptionEnd');
+  if(endInput)endInput.value=end;
+  const endLabel=form.querySelector('#atm-clock-label-end');
+  if(endLabel)endLabel.textContent=receptionHour(end);
+  const warning=form.querySelector('#atm-clock-warning');
+  if(warning)warning.textContent=end==='23:59'?'El rango termina el mismo día. Podés ajustar la hora final.':'Finalización ajustada automáticamente a dos horas después.';
+ }else{
+  const warning=form.querySelector('#atm-clock-warning');
+  if(warning)warning.textContent='Hora final modificada manualmente.';
+ }
+ atmClockDismiss();
+}
+root.addEventListener('click',e=>{
+ const action=e.target.closest('[data-a^="atm-clock-"]');
+ if(action){
+  e.preventDefault();e.stopImmediatePropagation();
+  const name=action.dataset.a;
+  if(name==='atm-clock-open')atmClockOpen(action.dataset.field);
+  else if(name==='atm-clock-dismiss')atmClockDismiss();
+  else if(name==='atm-clock-value')atmClockSelect(Number(action.dataset.value));
+  else if(name==='atm-clock-segment'&&atmClock){atmClock.step=action.dataset.step;atmClockDraw()}
+  else if(name==='atm-clock-period'&&atmClock){atmClock.period=action.dataset.period;atmClockDraw()}
+  else if(name==='atm-clock-adjust'&&atmClock){atmClock.minute=Math.max(0,Math.min(59,atmClock.minute+Number(action.dataset.delta)));atmClockDraw()}
+  else if(name==='atm-clock-done')atmClockCommit();
+  return;
+ }
+ if(!atmClock)return;
+ if(e.target.id==='atm-clock-root'){e.preventDefault();e.stopImmediatePropagation();atmClockDismiss();return}
+ const dial=e.target.closest('.atm-clock-dial');
+ if(dial&&!e.target.closest('button')){
+  e.preventDefault();e.stopImmediatePropagation();
+  const r=dial.getBoundingClientRect(),dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2);
+  if(Math.hypot(dx,dy)<30)return;
+  const degrees=(Math.atan2(dx,-dy)*180/Math.PI+360)%360;
+  atmClockSelect(atmClock.step==='hour'?(Math.round(degrees/30)%12||12):Math.round(degrees/6)%60);
+ }
+},true);
+document.addEventListener('keydown',e=>{
+ if(atmClock&&e.key==='Escape'){e.preventDefault();e.stopPropagation();atmClockDismiss()}
+});
+
 function modalHTML(){if(!dialog)return '';let h='',sheet=false;
 const footer='<button class="btn ghost" data-a="close">Cancelar</button>';
 if(dialog.type==='accountmenu'){
@@ -470,7 +583,7 @@ else if(dialog.type==='newbooking'||dialog.type==='editbooking'){
   [['start','Recibir desde',a?.receptionStart||'09:00'],['end','Recibir hasta',a?.receptionEnd||addReceptionHours(a?.receptionStart||'09:00')]].map(([field,label,value])=>
    '<div class="booking-clock-field"><span>'+label+'</span><input type="hidden" name="reception'+(field==='start'?'Start':'End')+'" value="'+esc(value)+'">'+
    '<button class="booking-clock-open" type="button" data-a="atm-clock-open" data-field="'+field+'" aria-label="Seleccionar '+label.toLowerCase()+' con reloj analógico"><span id="atm-clock-label-'+field+'">'+esc(receptionHour(value))+'</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></svg></button></div>').join('')+'</div>'+
-  '<div class="booking-clock-help">Tocá un reloj para elegir primero la hora y después los minutos. La finalización se calcula automáticamente dos horas después y también podés cambiarla.</div>'+
+  '<div class="booking-clock-help">Tocá un reloj para elegir primero la hora y después los minutos. La finalización se calcula automáticamente dos horas después y también podés cambiarla.</div><div class="booking-clock-help" id="atm-clock-warning" aria-live="polite"></div>'+
  '<label class="field">Indicaciones del trabajo<textarea name="instructions" maxlength="1200" required placeholder="Qué debe revisar, diagnosticar o realizar el técnico...">'+esc(a?.instructions||'')+'</textarea></label>'+
  '<label class="field">Tipo de servicio<select name="serviceType" id="serviceType">'+['Por definir','Revisión','Diagnóstico','Reparación','Mantenimiento','Otro'].map(t=>'<option value="'+t+'" '+((a?.serviceType||'Por definir')===t?'selected':'')+'>'+t+'</option>').join('')+'</select></label>'+
  '<label class="field service-other-wrap" id="serviceOtherWrap" style="'+((a?.serviceType||'Por definir')==='Otro'?'':'display:none')+'">Especificar otro servicio<input name="serviceOther" maxlength="100" value="'+esc(a?.serviceOther||'')+'" placeholder="¿Qué trabajo se realizará?"></label>'+
@@ -523,7 +636,7 @@ let historyGroup=Number(history.state?.atmHistoryGroup)||0,highlightNotice=null,
 // Only genuine screen and modal transitions create browser history entries.
 function navRoute(){return JSON.stringify([tab,employee,thread,dialog?.type||null,dialog?.id??dialog?.taskId??null]);}
 function snapshotState(){return {atmManager:true,atmHistoryGroup:historyGroup,meId:me?.id||null,tab,employee,thread,day,week,filter,logDay,logWeek,logEmployee,logCategory,monthCursor,ctx,dialog,draft};}
-function restoreState(s){if(!me)return;tab=s?.tab||'calendar';employee=s?.employee??null;thread=s?.thread??null;day=s?.day||today;week=s?.week||day;filter=s?.filter||'all';logDay=s?.logDay||day;logWeek=s?.logWeek||logDay;logEmployee=s?.logEmployee||'all';logCategory=s?.logCategory||'all';monthCursor=s?.monthCursor||day.slice(0,7)+'-01';ctx=s?.ctx||null;dialog=s?.dialog||null;draft=s?.draft||'';error='';render();}
+function restoreState(s){atmClockDismiss();if(!me)return;tab=s?.tab||'calendar';employee=s?.employee??null;thread=s?.thread??null;day=s?.day||today;week=s?.week||day;filter=s?.filter||'all';logDay=s?.logDay||day;logWeek=s?.logWeek||logDay;logEmployee=s?.logEmployee||'all';logCategory=s?.logCategory||'all';monthCursor=s?.monthCursor||day.slice(0,7)+'-01';ctx=s?.ctx||null;dialog=s?.dialog||null;draft=s?.draft||'';error='';render();}
 function syncHistory(replace=false){
  const st=snapshotState(),json=JSON.stringify(st),route=navRoute();
  if(suppressHistory||json===lastHistoryJSON)return;
