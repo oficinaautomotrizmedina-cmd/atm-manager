@@ -23,7 +23,37 @@
 .booking-label{font-size:9px;font-weight:900;letter-spacing:.8px;color:#175b40;display:block;margin-bottom:5px}
 .booking-name{font-size:13px!important;line-height:1.35;font-weight:850!important;color:#122e20!important;-webkit-text-fill-color:#122e20!important;display:block;overflow-wrap:anywhere}
 .booking-time{display:inline-flex;align-items:center;gap:5px;max-width:100%;font-size:12px;font-weight:850;color:#075c47;background:#e7f4ec;border:1px solid #c1e0ce;border-radius:7px;padding:7px 9px;margin-top:8px;line-height:1.4;overflow-wrap:anywhere}
-.booking-time.unscheduled{background:#fff8eb;border-color:#ead7ad;color:#86631f}
+/* Twelve-hour analog appointment time picker, isolated from other task forms. */
+#app .booking-clock-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:stretch}
+#app .booking-clock-field{display:flex;flex-direction:column;gap:6px;min-width:0;font-size:12px;color:#245039;font-weight:750}
+#app .booking-clock-open{display:flex;align-items:center;justify-content:space-between;gap:5px;width:100%;min-height:49px;padding:9px 10px;border:1px solid #accfba;border-radius:10px;background:#fff;color:#145c42;text-align:left;font-size:13px;font-weight:850;line-height:1.3}
+#app .booking-clock-open:focus-visible,#app .atm-clock-panel button:focus-visible{outline:3px solid #93cfac;outline-offset:2px}
+#app .booking-clock-open svg{width:21px;height:21px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+#app .booking-clock-help{font-size:11px;color:#52725d;line-height:1.4}
+#app .atm-clock-layer{position:absolute;inset:0;z-index:210;background:#071b14aa;display:flex;justify-content:center;align-items:center;padding:12px}
+#app .atm-clock-panel{display:flex;flex-direction:column;gap:12px;width:min(100%,350px);max-height:calc(100% - 20px);overflow-y:auto;overscroll-behavior:contain;background:#fff;border-radius:20px;padding:17px 16px 16px;box-shadow:0 15px 45px #071e1980}
+#app .atm-clock-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;color:#143e2a;font-size:13px;font-weight:800}
+#app .atm-clock-heading button{background:transparent;border:0;font-size:24px;line-height:1;color:#42634c;padding:5px}
+#app .atm-clock-display{display:flex;justify-content:center;align-items:center;gap:5px}
+#app .atm-clock-display .atm-clock-segment{font-size:31px;line-height:1.1;font-weight:900;color:#39765b;background:#e9f3ed;border:0;border-radius:12px;padding:8px 12px;font-variant-numeric:tabular-nums}
+#app .atm-clock-display .atm-clock-segment.selected{background:#086d53;color:#fff}
+#app .atm-clock-colon{font-size:31px;font-weight:900;color:#145b45}
+#app .atm-clock-periods{display:flex;flex-direction:column;gap:5px;margin-left:6px}
+#app .atm-clock-periods button{padding:6px 9px;border-radius:7px;border:1px solid #c7ddcf;background:#fff;color:#35684e;font-size:12px;font-weight:800}
+#app .atm-clock-periods button.selected{background:#0a6c50;border-color:#0a6c50;color:#fff}
+#app .atm-clock-dial{height:264px;width:264px;border-radius:50%;position:relative;margin:0 auto;background:#eef4ee;border:1px solid #d8e7db;flex:none;touch-action:manipulation}
+#app .atm-clock-number{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:40px;height:40px;display:grid;place-items:center;background:transparent;border:0;border-radius:50%;font-size:14px;font-weight:850;color:#345b44;z-index:2;font-variant-numeric:tabular-nums}
+#app .atm-clock-number.selected{background:#0b7658;color:#fff}
+#app .atm-clock-hand{position:absolute;left:calc(50% - 2px);top:calc(50% - 78px);width:4px;height:78px;background:#0b7658;border-radius:3px;transform-origin:50% 100%;pointer-events:none;z-index:1}
+#app .atm-clock-center{position:absolute;left:50%;top:50%;width:10px;height:10px;background:#0b7658;border-radius:50%;transform:translate(-50%,-50%);pointer-events:none;z-index:3}
+#app .atm-clock-steptext{font-size:12px;color:#537462;text-align:center;line-height:1.3}
+#app .atm-clock-adjust{display:flex;justify-content:center;align-items:center;gap:15px}
+#app .atm-clock-adjust button{width:36px;height:32px;border-radius:8px;border:1px solid #b9d6c5;background:#fff;color:#0d674d;font-weight:900;font-size:18px}
+#app .atm-clock-adjust span{font-weight:700;color:#375c48;font-size:12px}
+#app .atm-clock-actions{display:flex;gap:9px;justify-content:flex-end}
+#app .atm-clock-actions button{padding:11px 18px;border-radius:10px;border:1px solid #b9d6c5;background:#fff;color:#126147;font-size:13px;font-weight:850}
+#app .atm-clock-actions .done{background:#086d53;color:#fff;border-color:#086d53}
+#app .booking-time.unscheduled{background:#fff8eb;border-color:#ead7ad;color:#86631f}
 .booking-instructions{font-size:12px!important;color:#385641!important;-webkit-text-fill-color:#385641!important;font-weight:600;line-height:1.5;margin:6px 0 8px;white-space:pre-wrap;overflow-wrap:anywhere}
 .priority-label{font-size:10px!important;font-weight:850;line-height:1.35;padding:5px 8px;display:inline-flex;align-items:center;gap:5px;border-radius:6px}
 .priority-label.priority-red{background:#fce1df;color:#912a24!important;-webkit-text-fill-color:#912a24!important}
@@ -220,6 +250,13 @@ function receptionHour(raw){
 function receptionRange(item){
  const from=receptionHour(item?.receptionStart),to=receptionHour(item?.receptionEnd);
  return from&&to?from+' a '+to:'Horario por definir';
+}
+function addReceptionHours(start,hours=2){
+ const t=String(start||'').slice(0,5);
+ if(!/^\d{2}:\d{2}$/.test(t))return '';
+ const total=Number(t.slice(0,2))*60+Number(t.slice(3,5))+hours*60;
+ if(total>=1440)return '23:59'; // El rango no puede extenderse al siguiente día.
+ return String(Math.floor(total/60)).padStart(2,'0')+':'+String(total%60).padStart(2,'0');
 }
 const PRIORITIES={red:{name:'Garantía / Alta prioridad',short:'Garantía / Alta',color:'#cd443b'},yellow:{name:'Nivel técnico',short:'Nivel técnico',color:'#e4ae2c'},green:{name:'Nivel ingeniería',short:'Nivel ingeniería',color:'#22996b'}};
 const bookedFor=(id,d)=>appointments.filter(a=>a.userId===Number(id)&&a.day===d).sort((a,b)=>(a.order??9999)-(b.order??9999)||a.id-b.id);
@@ -429,7 +466,11 @@ else if(dialog.type==='newbooking'||dialog.type==='editbooking'){
  '<div class="notice"><b>Fecha:</b> '+esc(fmt(a?.day||day))+'<br>Definí el horario de recepción. Podés agendar el vehículo sin asignarlo todavía; después aparecerá en <b>Tareas → Pendientes de asignar</b>.</div>'+
  '<form id="bookingform" class="stack">'+
  '<label class="field">Vehículo — marca, modelo y año en una sola línea<input name="vehicle" maxlength="130" required placeholder="Ej. Toyota Corolla 2021" value="'+esc(a?.vehicle||'')+'"></label>'+
-  '<div class="row booking-reception-fields" style="align-items:flex-start;gap:10px"><label class="field" style="flex:1;min-width:0">Recibir desde<input type="time" name="receptionStart" step="300" required value="'+esc(a?.receptionStart||'')+'"></label><label class="field" style="flex:1;min-width:0">Recibir hasta<input type="time" name="receptionEnd" step="300" required value="'+esc(a?.receptionEnd||'')+'"></label></div>'+
+  '<div class="booking-clock-row">'+
+  [['start','Recibir desde',a?.receptionStart||'09:00'],['end','Recibir hasta',a?.receptionEnd||addReceptionHours(a?.receptionStart||'09:00')]].map(([field,label,value])=>
+   '<div class="booking-clock-field"><span>'+label+'</span><input type="hidden" name="reception'+(field==='start'?'Start':'End')+'" value="'+esc(value)+'">'+
+   '<button class="booking-clock-open" type="button" data-a="atm-clock-open" data-field="'+field+'" aria-label="Seleccionar '+label.toLowerCase()+' con reloj analógico"><span id="atm-clock-label-'+field+'">'+esc(receptionHour(value))+'</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></svg></button></div>').join('')+'</div>'+
+  '<div class="booking-clock-help">Tocá un reloj para elegir primero la hora y después los minutos. La finalización se calcula automáticamente dos horas después y también podés cambiarla.</div>'+
  '<label class="field">Indicaciones del trabajo<textarea name="instructions" maxlength="1200" required placeholder="Qué debe revisar, diagnosticar o realizar el técnico...">'+esc(a?.instructions||'')+'</textarea></label>'+
  '<label class="field">Tipo de servicio<select name="serviceType" id="serviceType">'+['Por definir','Revisión','Diagnóstico','Reparación','Mantenimiento','Otro'].map(t=>'<option value="'+t+'" '+((a?.serviceType||'Por definir')===t?'selected':'')+'>'+t+'</option>').join('')+'</select></label>'+
  '<label class="field service-other-wrap" id="serviceOtherWrap" style="'+((a?.serviceType||'Por definir')==='Otro'?'':'display:none')+'">Especificar otro servicio<input name="serviceOther" maxlength="100" value="'+esc(a?.serviceOther||'')+'" placeholder="¿Qué trabajo se realizará?"></label>'+
