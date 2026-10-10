@@ -614,7 +614,7 @@ else if(dialog.type==='cleanup'){
  (c.result&&Object.values(c.result.counts||{}).some(x=>Number(x)>0)?
  '<form class="atm-cleanup-confirm" id="atm-cleanup-confirm">'+
  '<div class="confirm-title">Eliminar definitivamente este historial</div>'+
- '<div class="confirm-copy">Esta acción elimina los registros mostrados de <b>todas las cuentas</b> y no se puede deshacer desde la aplicación. Incluye mensajes vinculados a los trabajos seleccionados, aunque alguno haya sido escrito fuera de esas fechas. Los perfiles y teléfonos no se borrarán.</div>'+
+ '<div class="confirm-copy">Esta acción elimina los registros mostrados de <b>todas las cuentas</b> y no se puede deshacer desde la aplicación. Incluye mensajes vinculados a los trabajos seleccionados, aunque alguno haya sido escrito fuera de esas fechas. Los mensajes antiguos pendientes en teléfonos desconectados no podrán restaurarse posteriormente. Los perfiles y teléfonos no se borrarán.</div>'+
  '<label class="field">Escribí ELIMINAR para confirmar<input type="text" name="word" id="atm-cleanup-confirm-word" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ELIMINAR" pattern="ELIMINAR" required></label>'+
  '<label class="check-row"><input type="checkbox" name="accept" id="atm-cleanup-accept" required> Comprendo que es irreversible y afecta a todos los usuarios.</label>'+
  '<button type="submit" id="atm-cleanup-delete-button" disabled>Eliminar definitivamente los registros mostrados</button></form>':
@@ -995,7 +995,12 @@ async function atmDeliverPending(){
    if(row.author_id!==id)continue;
    const check=await cloud.sb.from('atm_notices').select('id').eq('id',row.id).maybeSingle();
    if(check.error)throw check.error;
-   if(!check.data){const {error:e}=await cloud.sb.from('atm_notices').insert(row);if(e)throw e;}
+   if(!check.data){const {error:e}=await cloud.sb.from('atm_notices').insert(row);
+     if(e?.code==='23514'&&String(e.message||'').includes('historial ya limpiado')){
+       atmForgetPending(row.id,id);continue;
+     }
+     if(e)throw e;
+   }
    atmForgetPending(row.id,id);processed++;
    cloud.lastNotice.add(row.id);updateSendCheck(row.id);
     await atmPushDispatch('notice',row.id);
@@ -1090,13 +1095,18 @@ async function cloudWrite(){
    }
   }
   atmRememberPending();
-  for(const m of messages){
+  for(const m of [...messages]){
    if(m.uuid&&cloud.lastNotice.has(m.uuid))continue;
    if(!m.uuid)m.uuid=crypto.randomUUID();
    const row=rowForMessage(m);
    if(!row.author_id||!row.target_employee_id)throw new Error('Destinatario no identificado.');
    const {error:e}=await cloud.sb.from('atm_notices').insert(row);
    if(e){
+    if(e.code==='23514'&&String(e.message||'').includes('historial ya limpiado')){
+      atmForgetPending(m.uuid,expectedId);
+      messages=messages.filter(x=>x!==m);
+      continue;
+    }
     if(e.code==='23505'){
      const chk=await cloud.sb.from('atm_notices').select('id').eq('id',m.uuid).maybeSingle();
      if(chk.error||!chk.data)throw e;
