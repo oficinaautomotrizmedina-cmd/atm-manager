@@ -214,6 +214,16 @@
 #app .chathead button.chat-account-logo img{width:100%;height:100%;object-fit:cover}
 #app .modalwrap.atm-menu-wrap{align-items:flex-start;justify-content:flex-start;padding:66px 12px 12px;background:#0b261a66}
 #app .atm-menu-wrap .dialog{max-width:310px;width:min(90%,310px);max-height:calc(100% - 76px);border-radius:14px;padding:13px;gap:8px;box-shadow:0 8px 30px #001a1640}
+#app .atm-pass-row{display:flex;gap:7px;align-items:stretch;width:100%}
+#app .atm-pass-row input{flex:1;min-width:0}
+#app .atm-pass-reveal{display:flex;gap:5px;align-items:center;justify-content:center;min-width:66px;padding:0 9px;border:1px solid #bacfc0;border-radius:9px;background:#eef6f0;color:#19543d;font-size:12px;font-weight:800}
+#app .atm-pass-help{font-size:11px;line-height:1.45;color:#4c6c59}
+#app .atm-account-danger{display:flex;gap:10px;align-items:center;border:1px solid #e5bbb7;border-radius:10px;padding:10px;background:#fffafa;color:#993b34;font-size:12px;text-align:left;width:100%;margin-top:5px;font-weight:800}
+#app .atm-account-danger b{font-size:17px}
+#app .atm-delete-impact{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12px;padding:6px 0;border-bottom:1px solid #e4ece5}
+#app .atm-delete-impact strong{font-variant-numeric:tabular-nums}
+#app .atm-delete-check{display:flex;align-items:flex-start;gap:9px;font-size:12px;color:#87413b;line-height:1.4}
+#app .atm-delete-check input{margin-top:3px}
 #app .atm-cleanup-form{display:flex;flex-direction:column;gap:12px}
 #app .atm-cleanup-intro{font-size:12px;line-height:1.5;color:#355742;background:#f3f7f3;border:1px solid #dce8dc;padding:10px;border-radius:10px}
 #app .atm-cleanup-warning{padding:11px;border-radius:10px;border:1px solid #efcfaa;background:#fff7ec;color:#805a1e;font-size:12px;line-height:1.5}
@@ -622,6 +632,25 @@ else if(dialog.type==='cleanup'){
  '<div class="atm-cleanup-warning"><b>Seguridad:</b> solo se pueden limpiar fechas anteriores a hoy. El sistema vuelve a comprobar las cantidades antes de borrar y cancela toda la operación si detecta diferencias.</div>'+
  '<button class="btn ghost" data-a="close">Cerrar</button>';
 }
+else if(dialog.type==='userdelete'){
+ const u=user(dialog.id),impact=dialog.impact||{};
+ if(!u||u.is_master||u.uuid===me?.uuid||me?.role!=='admin'){
+  h='<h3>Operación no disponible</h3><p class="sub">No se puede eliminar esta cuenta.</p>'+footer;
+ }else{
+  const entries=[['Mensajes del usuario o dirigidos a él',impact.deleted_messages],['Avisos de calendario del usuario',impact.deleted_calendar_alerts],['Tareas que quedarán sin técnico',impact.unassigned_works],['Dispositivos que dejarán de recibir avisos',impact.deleted_devices],['Confirmaciones de lectura del usuario',impact.deleted_read_receipts]];
+  h='<div class="row"><h3>Eliminar cuenta</h3><button type="button" class="btn ghost" data-a="close" aria-label="Cerrar">×</button></div>'+
+   '<div class="atm-cleanup-warning"><strong>Se eliminará la cuenta '+esc(u.username)+'</strong> ('+esc(u.name)+'). Esta acción no se puede deshacer. También puede eliminar mensajes y registros de lectura relacionados.</div>'+
+   (dialog.loading?'<p class="sub">Comprobando los registros vinculados…</p>':
+    dialog.error?'<div class="alert">'+esc(dialog.error)+'</div><button type="button" class="btn ghost" data-a="atm-user-delete-open" data-id="'+u.id+'">Reintentar consulta</button>':
+    '<div class="atm-cleanup-preview"><strong>Impacto de la eliminación</strong>'+entries.map(([name,n])=>'<div class="atm-delete-impact"><span>'+esc(name)+'</span><strong>'+Number(n||0)+'</strong></div>').join('')+
+    '<p class="sub">Los vehículos y tareas permanecen, pero los asignados a esta persona pasarán a pendientes. Los mensajes de esa cuenta se perderán para todos.</p></div>'+
+    '<form id="atm-user-delete-form" class="stack">'+
+    '<label class="field">Para confirmar, escribí exactamente el usuario <b>'+esc(u.username)+'</b><input name="confirmUsername" id="atm-user-delete-name" autocomplete="off" spellcheck="false" required placeholder="'+esc(u.username)+'"></label>'+
+    '<label class="atm-delete-check"><input name="accept" id="atm-user-delete-accept" type="checkbox" required> Entiendo que se perderán los mensajes asociados y que la eliminación es definitiva.</label>'+
+    '<div id="atm-user-delete-error" class="alert" style="display:none"></div>'+
+    '<div class="row">'+footer+'<button class="btn red" type="submit">Eliminar definitivamente</button></div></form>');
+ }
+}
 else if(dialog.type==='monthpicker'){
  const m=new Date(monthCursor+'T12:00:00Z'),y=m.getUTCFullYear(),mon=m.getUTCMonth(),first=new Date(Date.UTC(y,mon,1,12));
  const offset=(first.getUTCDay()+6)%7,days=new Date(Date.UTC(y,mon+1,0,12)).getUTCDate();
@@ -632,8 +661,31 @@ else if(dialog.type==='monthpicker'){
  Array.from({length:offset},()=>'<span class="month-blank"></span>').join('')+
  Array.from({length:days},(_,i)=>{const k=new Date(Date.UTC(y,mon,i+1,12)).toISOString().slice(0,10),has=totalDay(k,filter);return '<button class="month-date '+(k===day?'active':'')+'" data-a="monthdate" data-day="'+k+'">'+(i+1)+(has?'<i></i>':'')+'</button>'}).join('')+'</div>';
 }
-else if(dialog.type==='newuser'||dialog.type==='edituser'){const u=user(dialog.id);h='<h3>'+(u?'Editar usuario':'Crear usuario')+'</h3><form class="stack" id="userform"><label class="field">Nombre<input name="name" required value="'+esc(u?.name||'')+'" placeholder="Nombre del empleado"></label><label class="field">Nombre de usuario<input name="username" required value="'+esc(u?.username||'')+'" placeholder="ej. edwin"></label><label class="field">'+(u?'Nueva contraseña (dejar vacía para conservar)':'Contraseña')+'<input name="password" '+(u?'':'required')+' type="text" placeholder="Mínimo 6 caracteres"></label><label class="field">Tipo de cuenta<select name="role"><option value="employee" '+(u?.role==='employee'||!u?'selected':'')+'>Empleado</option><option value="supervisor" '+(u?.role==='supervisor'?'selected':'')+'>Supervisor</option><option value="admin" '+(u?.role==='admin'?'selected':'')+'>Administrador</option></select></label>'+(u?'<label class="field">Estado<select name="active"><option value="true" '+(u.active?'selected':'')+'>Activo</option><option value="false" '+(!u.active?'selected':'')+'>Inactivo</option></select></label>':'')+'<div id="usererror" class="alert" style="display:none"></div><div class="row">'+footer+'<button class="btn" type="submit">Guardar cuenta</button></div></form>'}
-else if(dialog.type==='created'){h='<h3>Cuenta creada</h3><p class="sub">Estas son las credenciales para entregar al empleado.</p><div class="notice">Usuario: <b>'+esc(dialog.username)+'</b><p>Contraseña: <b>'+esc(dialog.password)+'</b></p></div><button class="btn" data-a="close">Entendido</button>'}
+else if(dialog.type==='newuser'||dialog.type==='edituser'){
+ const u=user(dialog.id),isExisting=!!u;
+ h='<h3>'+(isExisting?'Editar usuario':'Crear usuario')+'</h3>'+
+ '<form class="stack" id="userform">'+
+ '<label class="field">Nombre<input name="name" required value="'+esc(u?.name||'')+'" placeholder="Nombre del empleado"></label>'+
+ '<label class="field">Nombre de usuario<input name="username" required value="'+esc(u?.username||'')+'" placeholder="Ej. edwin"></label>'+
+ '<div class="field"><label for="atm-user-password">'+(isExisting?'Contraseña / Cambiar contraseña':'Contraseña')+'</label>'+
+ '<div class="atm-pass-row"><input id="atm-user-password" name="password" type="password" autocomplete="new-password" minlength="10" '+(isExisting?'':'required')+' placeholder="'+(isExisting?'•••••••• (actual protegida)':'Mínimo 10 caracteres')+'">'+
+ '<button type="button" class="atm-pass-reveal" data-a="atm-toggle-password" data-target="atm-user-password" aria-controls="atm-user-password" aria-pressed="false">👁 Ver</button></div>'+
+ '<div class="atm-pass-help">'+(isExisting?'La contraseña actual no se puede recuperar en Supabase. Si escribís una nueva, reemplazará la anterior; si dejás el campo vacío, se conserva.':'Podés mostrar u ocultar la contraseña antes de crear la cuenta.')+'</div></div>'+
+ '<label class="field">Tipo de cuenta<select name="role">'+['employee','supervisor','admin'].map(r=>'<option value="'+r+'" '+((u?.role||'employee')===r?'selected':'')+'>'+roleLabel(r)+'</option>').join('')+'</select></label>'+
+ (isExisting?'<label class="field">Estado<select name="active"><option value="true" '+(u.active?'selected':'')+'>Activo</option><option value="false" '+(!u.active?'selected':'')+'>Inactivo</option></select></label>':'')+
+ '<div id="usererror" class="alert" style="display:none"></div>'+
+ '<div class="row">'+footer+'<button class="btn" type="submit">Guardar cuenta</button></div></form>'+
+ (isExisting&&!u.is_master&&u.uuid!==me?.uuid?'<button type="button" class="atm-account-danger" data-a="atm-user-delete-open" data-id="'+u.id+'"><b>🗑</b><span>Eliminar usuario definitivamente</span></button>':'');
+}
+else if(dialog.type==='created'){
+ h='<h3>'+(dialog.changed?'Contraseña actualizada':'Cuenta creada')+'</h3>'+
+ '<p class="sub">Estos son los datos de acceso. Esta contraseña se muestra solamente ahora; guardala de forma segura.</p>'+
+ '<div class="notice"><strong>Usuario: '+esc(dialog.username)+'</strong>'+
+ '<div class="field" style="margin-top:8px"><label for="atm-user-result-password">Contraseña nueva</label><div class="atm-pass-row">'+
+ '<input id="atm-user-result-password" type="password" readonly value="'+esc(dialog.password||'')+'">'+
+ '<button class="atm-pass-reveal" type="button" data-a="atm-toggle-password" data-target="atm-user-result-password" aria-pressed="false">👁 Ver</button></div></div></div>'+
+ '<button class="btn" data-a="close">Entendido</button>';
+}
 else if(dialog.type==='newbooking'||dialog.type==='editbooking'){
  const a=appointments.find(x=>x.id===dialog.id),selectedUser=a?.userId??'';
  h='<div class="row"><div><div class="overline">'+(a?'MODIFICAR AGENDAMIENTO':'NUEVO AGENDAMIENTO')+'</div><h3>'+(a?'Editar vehículo agendado':'Agendar vehículo')+'</h3></div><span class="agenda-header-icon">🚘</span></div>'+
