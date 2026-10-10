@@ -506,6 +506,9 @@ function atmClockCommit(){
  const field=c.field,part=field==='start'?'receptionStart':'receptionEnd',input=form.elements.namedItem(part);
  if(!input)return;
  if(field==='start'&&value>='23:59'){notify('Elegí una hora inicial anterior a las 11:59 p. m.');return}
+ if(field==='end'&&value<=String(form.elements.namedItem('receptionStart')?.value||'')){
+  notify('La hora de finalización debe ser posterior a la de recepción.');return;
+ }
  input.value=value;
  const label=form.querySelector('#atm-clock-label-'+field);
  if(label)label.textContent=receptionHour(value);
