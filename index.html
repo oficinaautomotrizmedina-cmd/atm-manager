@@ -749,9 +749,8 @@ async function cloudWrite(){
     if(!oldSerialized){const {error}=await cloud.sb.from('atm_work_items').insert({...row,created_by:me.uuid});if(error)throw error;}
     else {const {error}=await cloud.sb.from('atm_work_items').update(row).eq('id',item.uuid);if(error)throw error;}
     cloud.lastWork.set(item.uuid,serialized);
-    const previous=oldSerialized?JSON.parse(oldSerialized):null;
-     const changedForTechnician=!previous||previous.assigned_to!==row.assigned_to||['vehicle','instructions','work_day','service_type','service_other','priority'].some(key=>previous[key]!==row[key]);
-     if(row.assigned_to&&changedForTechnician)await atmPushDispatch('work',item.uuid,previous&&previous.assigned_to===row.assigned_to?'updated':'assigned');
+    // Los cambios de calendario se registran en atm_calendar_changes.
+     // Sin Web Push: el aviso aparece solo dentro de la aplicación.
    }
   }
   atmRememberPending();
@@ -802,11 +801,11 @@ async function atmPushCall(action,fields={}){
  if(!response.ok)throw new Error(body.error||'No se pudo enviar la notificación.');
  return body;
 }
-async function atmPushDispatch(action,id,changeType='assigned'){
- try{
-  if(action==='notice')return await atmPushCall('notice',{notice_id:id});
-  if(action==='work')return await atmPushCall('work',{work_id:id,change_type:changeType});
- }catch(e){console.warn('El dato quedó guardado, pero no se pudo confirmar el push:',e.message)}
+async function atmPushDispatch(action,id){
+ // Web Push exclusivo para mensajes de chat guardados en atm_notices.
+ if(action!=='notice')return null;
+ try{return await atmPushCall('notice',{notice_id:id})}
+ catch(e){console.warn('El mensaje quedó guardado, pero no se pudo confirmar el push:',e.message)}
  return null;
 }
 async function atmPushRegister(allowNew=false){
