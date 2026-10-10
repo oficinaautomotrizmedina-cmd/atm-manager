@@ -220,6 +220,12 @@
 #app .atm-cleanup-preview{padding:12px;border-radius:10px;background:#f5f9f6;border:1px solid #c4dec9;display:flex;flex-direction:column;gap:7px}
 #app .atm-cleanup-count{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:#244734}
 #app .atm-cleanup-count strong{font-variant-numeric:tabular-nums}
+#app .atm-cleanup-confirm{display:flex;flex-direction:column;gap:10px;padding:12px;border:1px solid #e3baba;background:#fff8f7;border-radius:11px}
+#app .atm-cleanup-confirm .confirm-title{font-size:13px;font-weight:900;color:#8c2d28}
+#app .atm-cleanup-confirm .confirm-copy{font-size:12px;color:#71413c;line-height:1.45}
+#app .atm-cleanup-confirm input[type="text"]{letter-spacing:1px}
+#app .atm-cleanup-confirm button{background:#a8322c;color:#fff;border:0;border-radius:10px;padding:12px;font-weight:850;min-height:44px}
+#app .atm-cleanup-confirm button:disabled{background:#cbb8b6;cursor:not-allowed}
 #app .atm-cleanup-dates{font-size:11px;color:#3c624e}
 #app .atm-menu-wrap .opt{padding:10px 11px}
 #app .atm-menu-wrap .atm-menu-logout strong{color:#9b312b!important;-webkit-text-fill-color:#9b312b!important}
@@ -605,7 +611,15 @@ else if(dialog.type==='cleanup'){
  (c.error?'<div class="alert">'+esc(c.error)+'</div>':'')+
  '<button type="submit" class="btn" '+(c.busy?'disabled':'')+'>'+(c.busy?'Consultando…':'Consultar registros del período')+'</button></form>'+
  cleanupCountsHTML(c.result)+
- '<div class="atm-cleanup-warning"><b>Importante:</b> esta consulta no borra información. La eliminación definitiva todavía no está habilitada. No se modificarán las cuentas, contraseñas ni los dispositivos.</div>'+
+ (c.result&&Object.values(c.result.counts||{}).some(x=>Number(x)>0)?
+ '<form class="atm-cleanup-confirm" id="atm-cleanup-confirm">'+
+ '<div class="confirm-title">Eliminar definitivamente este historial</div>'+
+ '<div class="confirm-copy">Esta acción elimina los registros mostrados de <b>todas las cuentas</b> y no se puede deshacer desde la aplicación. Incluye mensajes vinculados a los trabajos seleccionados, aunque alguno haya sido escrito fuera de esas fechas. Los perfiles y teléfonos no se borrarán.</div>'+
+ '<label class="field">Escribí ELIMINAR para confirmar<input type="text" name="word" id="atm-cleanup-confirm-word" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ELIMINAR" pattern="ELIMINAR" required></label>'+
+ '<label class="check-row"><input type="checkbox" name="accept" id="atm-cleanup-accept" required> Comprendo que es irreversible y afecta a todos los usuarios.</label>'+
+ '<button type="submit" id="atm-cleanup-delete-button" disabled>Eliminar definitivamente los registros mostrados</button></form>':
+ c.result?'<div class="atm-cleanup-intro">No hay registros que eliminar en este período.</div>':'')+
+ '<div class="atm-cleanup-warning"><b>Seguridad:</b> solo se pueden limpiar fechas anteriores a hoy. El sistema vuelve a comprobar las cantidades antes de borrar y cancela toda la operación si detecta diferencias.</div>'+
  '<button class="btn ghost" data-a="close">Cerrar</button>';
 }
 else if(dialog.type==='monthpicker'){
@@ -827,6 +841,57 @@ root.addEventListener('change',e=>{
   cleanupState.mode=e.target.value;
   cleanupState.error='';cleanupState.result=null;
   overlay.innerHTML=modalHTML();
+ }
+},true);
+root.addEventListener('input',e=>{
+ if(e.target.id!=='atm-cleanup-confirm-word')return;
+ const form=overlay.querySelector('#atm-cleanup-confirm'),button=form?.querySelector('#atm-cleanup-delete-button');
+ if(button)button.disabled=e.target.value.trim()!=='ELIMINAR'||!form.querySelector('#atm-cleanup-accept')?.checked;
+},true);
+root.addEventListener('change',e=>{
+ if(e.target.id!=='atm-cleanup-accept')return;
+ const form=overlay.querySelector('#atm-cleanup-confirm'),button=form?.querySelector('#atm-cleanup-delete-button');
+ if(button)button.disabled=form.querySelector('#atm-cleanup-confirm-word')?.value.trim()!=='ELIMINAR'||!e.target.checked;
+},true);
+root.addEventListener('submit',async e=>{
+ if(e.target.id!=='atm-cleanup-confirm')return;
+ e.preventDefault();e.stopImmediatePropagation();
+ const c=cleanupState;
+ if(me?.role!=='admin'||dialog?.type!=='cleanup'||!c?.result?.counts||c.busy)return;
+ const fd=new FormData(e.target);
+ if(String(fd.get('word')||'').trim()!=='ELIMINAR'||fd.get('accept')!=='on')return;
+ const dates={from:c.result.start,to:c.result.end},expected={...c.result.counts};
+ c.busy=true;c.error='';
+ overlay.innerHTML=modalHTML();
+ const wasReady=cloud.ready;
+ try{
+  if(!cloud.sb||!me?.uuid)throw new Error('No hay sesión activa.');
+  const {data,error}=await cloud.sb.auth.getSession();
+  if(error||!data?.session?.access_token||data.session.user?.id!==me.uuid)throw new Error('Volvé a iniciar sesión.');
+  // Suspend browser writes until the authoritative server operation is complete.
+  cloud.ready=false;
+  clearTimeout(cloud.writeTimer);
+  const result=await cloudAPI({action:'cleanup_delete',date_from:dates.from,date_to:dates.to,expected_counts:expected,confirm:'ELIMINAR'},data.session.access_token);
+  if(!result?.ok||result.deleted!==true)throw new Error('Supabase no confirmó el borrado.');
+  const own=me.uuid;
+  // Clear locally queued copies of records from the removed period on this device.
+  const stillPending=atmReadOutbox(own).filter(row=>{
+   const date=String(row.work_day||new Date(row.created_at||0).toLocaleDateString('sv-SE',{timeZone:'America/El_Salvador'})).slice(0,10);
+   return date<dates.from||date>dates.to;
+  });
+  if(stillPending.length)localStorage.setItem(atmOutboxKey(own),JSON.stringify(stillPending));
+  else localStorage.removeItem(atmOutboxKey(own));
+  closeDialog();
+  await cloudLoad();
+  notify('Historial eliminado en Supabase. Registros confirmados: '+Object.values(expected).reduce((n,v)=>n+Number(v||0),0));
+ }catch(err){
+  c.error=String(err.message||'No se pudo confirmar la eliminación.');
+  c.result=null; // Un error obliga a solicitar una vista previa nueva.
+  if(me?.role==='admin'&&dialog?.type==='cleanup')overlay.innerHTML=modalHTML();
+ }finally{
+  if(!cloud.ready)cloud.ready=wasReady;
+  c.busy=false;
+  if(me?.role==='admin'&&dialog?.type==='cleanup')overlay.innerHTML=modalHTML();
  }
 },true);
 root.addEventListener('submit',async e=>{
