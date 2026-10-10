@@ -1170,7 +1170,7 @@ root.addEventListener('click',e=>{
   if(btn.dataset.day===logHoldDay&&relevantLogs(logHoldDay).length)atmLogAskDelete('day',[],logHoldDay);
   return;
  }
- if(!me||tab!=='logs')return;
+ if(!me||(tab!=='logs'&&!(dialog?.type==='logs'&&action==='atm-log-delete-one')))return;
  const current=atmLogCurrentVisible();
  if(action==='atm-log-start-select'){logSelectMode=true;logSelected.clear();render();return;}
  if(action==='atm-log-cancel-select'){logSelectMode=false;logSelected.clear();render();return;}
@@ -1187,8 +1187,7 @@ root.addEventListener('click',e=>{
   render();return;
  }
  if(action==='atm-log-delete-selected'){
-  const ids=current.map(x=>x.uuid).filter(x=>logSelected.has(x.uuid||x));
-  // Filter on UUID strings, not internal log row IDs.
+  // Delete only selected, currently visible persisted records.
   const chosen=current.map(x=>x.uuid).filter(id=>logSelected.has(id));
   if(chosen.length)atmLogAskDelete('ids',chosen);
   return;
