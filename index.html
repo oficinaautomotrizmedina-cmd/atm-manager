@@ -214,6 +214,13 @@
 #app .chathead button.chat-account-logo img{width:100%;height:100%;object-fit:cover}
 #app .modalwrap.atm-menu-wrap{align-items:flex-start;justify-content:flex-start;padding:66px 12px 12px;background:#0b261a66}
 #app .atm-menu-wrap .dialog{max-width:310px;width:min(90%,310px);max-height:calc(100% - 76px);border-radius:14px;padding:13px;gap:8px;box-shadow:0 8px 30px #001a1640}
+#app .atm-cleanup-form{display:flex;flex-direction:column;gap:12px}
+#app .atm-cleanup-intro{font-size:12px;line-height:1.5;color:#355742;background:#f3f7f3;border:1px solid #dce8dc;padding:10px;border-radius:10px}
+#app .atm-cleanup-warning{padding:11px;border-radius:10px;border:1px solid #efcfaa;background:#fff7ec;color:#805a1e;font-size:12px;line-height:1.5}
+#app .atm-cleanup-preview{padding:12px;border-radius:10px;background:#f5f9f6;border:1px solid #c4dec9;display:flex;flex-direction:column;gap:7px}
+#app .atm-cleanup-count{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:#244734}
+#app .atm-cleanup-count strong{font-variant-numeric:tabular-nums}
+#app .atm-cleanup-dates{font-size:11px;color:#3c624e}
 #app .atm-menu-wrap .opt{padding:10px 11px}
 #app .atm-menu-wrap .atm-menu-logout strong{color:#9b312b!important;-webkit-text-fill-color:#9b312b!important}
 #app .atm-calendar-news{padding:12px;border:1px solid #e7cfcf;background:#fff;border-radius:12px;display:flex;flex-direction:column;gap:8px}
@@ -238,6 +245,27 @@ let users=[],jobs=[],messages=[],logs=[],drafts={},calendarChanges=[];
 let nextUser=2,nextJob=1,nextMsg=1,nextLog=1;
 // Agendamientos de ejemplo: categorías de atención, no un semáforo de urgencia.
 let appointments=[];
+let cleanupState=null;
+function cleanupPrevMonth(){
+ const d=new Date(TODAY+'T12:00:00Z');d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()-1);
+ return d.toISOString().slice(0,7);
+}
+function cleanupOpen(){
+ if(me?.role!=='admin')return;
+ const old=dayAdd(TODAY,-1);
+ cleanupState={mode:'day',day:old,month:cleanupPrevMonth(),from:old,to:old,result:null,error:'',busy:false};
+ showDialog({type:'cleanup'});
+}
+function cleanupCountsHTML(r){
+ if(!r?.counts)return '';
+ const c=r.counts;
+ const records=[['Vehículos agendados',c.bookings],['Tareas',c.tasks],['Mensajes y registros de chat',c.messages],['Avisos del calendario',c.calendar_changes],['Confirmaciones de lectura',c.read_receipts],['Registros de envío de notificaciones',c.push_delivery_logs]];
+ return '<div class="atm-cleanup-preview"><strong style="font-size:13px">Vista previa del historial</strong>'+
+  '<div class="atm-cleanup-dates">'+esc(r.start)+' al '+esc(r.end)+'</div>'+
+  records.map(([name,count])=>'<div class="atm-cleanup-count"><span>'+esc(name)+'</span><strong>'+Number(count||0)+'</strong></div>').join('')+
+  '<div class="atm-cleanup-count" style="padding-top:6px;border-top:1px solid #d7e6d9"><strong>Total de registros relacionados</strong><strong>'+records.reduce((n,x)=>n+Number(x[1]||0),0)+'</strong></div></div>';
+}
+
 let nextAppointment=1;
 function receptionHour(raw){
  const t=String(raw||'').slice(0,5);
@@ -561,8 +589,24 @@ if(dialog.type==='accountmenu'){
  h='<div class="row"><h3>Opciones del taller</h3><button class="btn ghost" data-a="close" aria-label="Cerrar menú">×</button></div>'+
  '<button class="opt" data-a="atm-push-enable"><span class="ico">🔔</span><span><strong>Activar notificaciones</strong><small>Permisos y avisos en este teléfono</small></span></button>'+
  '<button class="opt" data-a="gotonotices"><span class="ico">▤</span><span><strong>Notificaciones</strong></span></button>'+
- (me?.role==='admin'?'<button class="opt" data-a="openusers"><span class="ico">👤</span><span><strong>Usuarios</strong></span></button>':'')+
+ (me?.role==='admin'?'<button class="opt" data-a="openusers"><span class="ico">👤</span><span><strong>Usuarios</strong></span></button><button class="opt" data-a="atm-cleanup-open"><span class="ico">🧹</span><span><strong>Limpiar historial</strong><small>Seleccionar fechas y consultar registros</small></span></button>':'')+
  '<button class="opt atm-menu-logout" data-a="logout"><span class="ico">↪</span><span><strong>Cerrar sesión</strong></span></button>';
+}
+else if(dialog.type==='cleanup'){
+ if(me?.role!=='admin')return '';
+ const c=cleanupState||{},maxDay=dayAdd(TODAY,-1);
+ h='<div class="row"><h3>Limpiar historial</h3><button type="button" class="btn ghost" data-a="close">×</button></div>'+
+ '<div class="atm-cleanup-intro">Seleccioná un día, un mes completo o un rango para consultar los datos acumulados en <b>todas las cuentas</b>. Los registros actuales y futuros quedan fuera de esta revisión.</div>'+
+ '<form class="atm-cleanup-form" id="atm-cleanup-form">'+
+ '<label class="field">Período<select name="mode" id="atm-cleanup-mode">'+[['day','Un día'],['month','Un mes completo'],['range','Rango de días']].map(x=>'<option value="'+x[0]+'"'+(c.mode===x[0]?' selected':'')+'>'+x[1]+'</option>').join('')+'</select></label>'+
+ (c.mode==='day'?'<label class="field">Día<input name="date" type="date" max="'+maxDay+'" value="'+esc(c.day||maxDay)+'" required></label>':
+  c.mode==='month'?'<label class="field">Mes<input name="month" type="month" max="'+maxDay.slice(0,7)+'" value="'+esc(c.month||cleanupPrevMonth())+'" required></label>':
+  '<div class="row" style="align-items:flex-start;gap:9px"><label class="field" style="flex:1;min-width:0">Desde<input type="date" name="from" max="'+maxDay+'" value="'+esc(c.from||maxDay)+'" required></label><label class="field" style="flex:1;min-width:0">Hasta<input type="date" name="to" max="'+maxDay+'" value="'+esc(c.to||maxDay)+'" required></label></div>')+
+ (c.error?'<div class="alert">'+esc(c.error)+'</div>':'')+
+ '<button type="submit" class="btn" '+(c.busy?'disabled':'')+'>'+(c.busy?'Consultando…':'Consultar registros del período')+'</button></form>'+
+ cleanupCountsHTML(c.result)+
+ '<div class="atm-cleanup-warning"><b>Importante:</b> esta consulta no borra información. La eliminación definitiva todavía no está habilitada. No se modificarán las cuentas, contraseñas ni los dispositivos.</div>'+
+ '<button class="btn ghost" data-a="close">Cerrar</button>';
 }
 else if(dialog.type==='monthpicker'){
  const m=new Date(monthCursor+'T12:00:00Z'),y=m.getUTCFullYear(),mon=m.getUTCMonth(),first=new Date(Date.UTC(y,mon,1,12));
@@ -771,6 +815,55 @@ function pointerEnd(e,success){
 
 window.addEventListener('pointerup',e=>pointerEnd(e,true));window.addEventListener('pointercancel',e=>pointerEnd(e,false));
 root.addEventListener('input',e=>{if(e.target.id==='draft')draft=e.target.value});root.addEventListener('change',e=>{if(e.target.id==='filter'){filter=e.target.value;render()}else if(e.target.id==='logperson'&&me?.role==='admin'){logEmployee=e.target.value;render()}else if(e.target.id==='logcategory'){logCategory=e.target.value;render()}else if(e.target.id==='allowReply'){adminAllowReply=e.target.checked}else if(e.target.id==='serviceType'){const other=overlay.querySelector('#serviceOtherWrap');if(other)other.style.display=e.target.value==='Otro'?'flex':'none'}});
+
+root.addEventListener('click',e=>{
+ const b=e.target.closest('[data-a="atm-cleanup-open"]');
+ if(!b)return;
+ e.preventDefault();e.stopImmediatePropagation();
+ cleanupOpen();
+},true);
+root.addEventListener('change',e=>{
+ if(e.target.id==='atm-cleanup-mode'&&cleanupState&&dialog?.type==='cleanup'){
+  cleanupState.mode=e.target.value;
+  cleanupState.error='';cleanupState.result=null;
+  overlay.innerHTML=modalHTML();
+ }
+},true);
+root.addEventListener('submit',async e=>{
+ if(e.target.id!=='atm-cleanup-form')return;
+ e.preventDefault();e.stopImmediatePropagation();
+ if(me?.role!=='admin'||dialog?.type!=='cleanup'||cleanupState?.busy)return;
+ const f=new FormData(e.target),c=cleanupState,mode=String(f.get('mode')||'day');
+ c.mode=mode;
+ let from,to;
+ if(mode==='day'){from=to=String(f.get('date')||'');c.day=from}
+ else if(mode==='month'){
+  c.month=String(f.get('month')||'');from=c.month+'-01';
+  const d=new Date(from+'T12:00:00Z');
+  to=Number.isFinite(d.getTime())?new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0,12)).toISOString().slice(0,10):'';
+ }else if(mode==='range'){from=c.from=String(f.get('from')||'');to=c.to=String(f.get('to')||'')}
+ else {c.error='Elegí el tipo de período.';overlay.innerHTML=modalHTML();return}
+ c.result=null;c.error='';
+ const iso=/^\d{4}-\d{2}-\d{2}$/,today=TODAY;
+ const valid=d=>iso.test(d)&&!Number.isNaN(new Date(d+'T12:00:00Z').getTime())&&new Date(d+'T12:00:00Z').toISOString().slice(0,10)===d;
+ if(!valid(from)||!valid(to)||from>to||to>=today||(new Date(to+'T12:00:00Z')-new Date(from+'T12:00:00Z'))/86400000>366){
+  c.error='Elegí fechas anteriores a hoy y un período máximo de 367 días.';
+  overlay.innerHTML=modalHTML();return;
+ }
+ c.busy=true;overlay.innerHTML=modalHTML();
+ try{
+  if(!cloud.sb||!me?.uuid)throw new Error('No hay sesión activa.');
+  const {data,error}=await cloud.sb.auth.getSession();
+  if(error||!data?.session?.access_token||data.session.user?.id!==me.uuid)throw new Error('Volvé a iniciar sesión.');
+  const result=await cloudAPI({action:'cleanup_preview',date_from:from,date_to:to},data.session.access_token);
+  if(!result?.ok||!result?.counts)throw new Error('No se recibió la vista previa.');
+  c.result=result;
+ }catch(err){c.error=String(err.message||'No se pudo consultar el historial.')}
+ finally{
+  c.busy=false;
+  if(me?.role==='admin'&&dialog?.type==='cleanup'&&cleanupState===c)overlay.innerHTML=modalHTML();
+ }
+},true);
 root.addEventListener('click',e=>{if(Date.now()<blockedClick&&(e.target.closest('[data-a="date"]')||e.target.closest('[data-a="editjob"]')))return;const navbtn=e.target.closest('[data-tab]');if(navbtn){tab=navbtn.dataset.tab;employee=null;thread=null;ctx=null;draft='';closeDialog();render();return}const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a;if(a==='atm-open-calendar-change'){viewCalendarChange(b.dataset.id);return}if(a==='close'){closeDialog();return}if(a==='atm-account-menu'){if(me)showDialog({type:'accountmenu'});return}if(a==='backcalendar'){tab='calendar';thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='logout'){logout();return}if(a==='openusers'){tab='users';employee=null;thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='openlogs'){logDay=(tab==='calendar'?day:logDay);logWeek=logDay;logEmployee='all';logCategory='all';tab='logs';thread=null;employee=null;ctx=null;draft='';closeDialog();render();return}if(a==='logsdate'){logDay=day;logWeek=day;logEmployee='all';logCategory='all';tab='logs';closeDialog();render();return}if(a==='logprev'||a==='lognext'){logDay=dayAdd(logDay,a==='logprev'?-7:7);logWeek=logDay;render();return}if(a==='logdate'){logDay=b.dataset.day;logWeek=logDay;render();return}if(a==='openlog'){const entry=logs.find(x=>x.id===Number(b.dataset.id));if(entry&&(me.role==='admin'||entry.employeeId===me.id))showDialog({type:'logdetail',id:entry.id});return}if(a==='newuser'){showDialog({type:'newuser'});return}if(a==='edituser'){showDialog({type:'edituser',id:Number(b.dataset.id)});return}if(a==='showmonth'&&me?.role==='admin'&&tab==='calendar'){monthCursor=day.slice(0,7)+'-01';showDialog({type:'monthpicker'});return}if(a==='monthprev'||a==='monthnext'){const mm=new Date(monthCursor+'T12:00:00Z');mm.setUTCMonth(mm.getUTCMonth()+(a==='monthprev'?-1:1));monthCursor=mm.toISOString().slice(0,7)+'-01';showDialog({type:'monthpicker'});return}if(a==='monthdate'){day=b.dataset.day;week=day;closeDialog();render();return}if(a==='newbooking'){showDialog({type:'newbooking'});return}if(a==='editbooking'){const ap=appointments.find(x=>x.id===Number(b.dataset.booking));if(ap){day=ap.day;week=ap.day;showDialog({type:'editbooking',id:ap.id})}return}if(a==='askdeletebooking'){showDialog({type:'deleteBooking',id:dialog.id});return}if(a==='confirmdeletebooking'){const prev=appointments.find(x=>x.id===dialog.id);appointments=appointments.filter(x=>x.id!==dialog.id);if(prev)renumber(prev.userId,prev.day);closeDialog();render();notify('Agendamiento eliminado');return}if(a==='newjob'){showDialog({type:'newjob'});return}if(a==='editjob'){showDialog({type:'editjob',id:Number(b.dataset.job)});return}if(a==='prev'||a==='next'){day=dayAdd(day,a==='prev'?-7:7);week=day;render();return}if(a==='date'){day=b.dataset.day;week=day;render();return}if(a==='employee'){employee=Number(b.dataset.id);render();return}if(a==='pending'){employee='pending';filter='all';render();return}if(a==='backemployee'){employee=null;render();return}if(a==='openchat'){thread=Number(b.dataset.id);ctx=null;draft='';adminAllowReply=false;render();return}if(a==='gotonotices'){tab='chat';thread=null;ctx=null;draft='';render();return}if(a==='replyinstruction'){const m=messages.find(x=>x.id===Number(b.dataset.id));if(canReplyTo(m)){ctx={category:'Respuesta a instrucción',replyTo:m.id,vehicle:m.vehicle||null,taskType:m.taskType||null,taskId:m.taskId||null};draft='';render();setTimeout(()=>main.querySelector('#draft')?.focus(),0)}return}if(a==='notebooking'||a==='notejob'){if(me?.role!=='admin')return;showDialog({type:'adminnote',taskType:a==='notebooking'?'booking':'job',taskId:Number(b.dataset.id)});return}if(a==='backchat'){thread=null;render();return}if(a==='plus'){showDialog({type:'categories'});return}if(a==='category'){category(b.dataset.cat);return}if(a==='backcategories'){showDialog({type:'categories'});return}if(a==='selectbooking'){const ap=appointments.find(x=>x.id===Number(b.dataset.booking)&&x.userId===me.id);if(ap){ctx={category:dialog.category,vehicle:ap.vehicle,jobId:'a'+ap.id,bookingId:ap.id,taskType:'booking',taskId:ap.id,taskDetail:ap.instructions,workDay:ap.day,priority:ap.priority};draft=dialog.category==='Registrar bitácora'?drafts[me.id+':'+ctx.jobId]||'':'';closeDialog();render()}return}if(a==='selectcar'){const j=jobs.find(x=>x.id===Number(b.dataset.job)&&x.userId===me.id);if(j){ctx={category:dialog.category,vehicle:j.title,jobId:j.id,taskType:'job',taskId:j.id,taskDetail:j.detail,workDay:j.day,priority:null};draft=dialog.category==='Registrar bitácora'?drafts[me.id+':'+j.id]||'':'';closeDialog();render()}return}if(a==='clearctx'){ctx=null;draft='';render();return}if(a==='savedraft'){if(ctx?.jobId)drafts[me.id+':'+ctx.jobId]=draft;ctx=null;draft='';render();notify('Bitácora guardada como borrador');return}if(a==='chatmenu'||a==='allmenu'){showDialog({type:a});return}if(a==='viewlogs'){showDialog({type:'logs'});return}if(a==='clearask'||a==='clearallask'){showDialog({type:a});return}if(a==='clearconfirm'){clearChats();return}if(a==='copy'||a==='move'){transfer(a==='move');return}if(a==='deleteconfirm'){removeStuff();return}});
 root.addEventListener('submit',e=>{e.preventDefault();const f=e.target;if(f.id==='login'){const d=new FormData(f);doLogin(d.get('username'),d.get('password'));return}if(f.id==='userform'){const d=new FormData(f),name=String(d.get('name')||'').trim(),username=String(d.get('username')||'').trim(),password=String(d.get('password')||''),old=user(dialog.id),dupe=users.some(u=>u.username.toLowerCase()===username.toLowerCase()&&u.id!==old?.id);const err=overlay.querySelector('#usererror');if(!name||!/^[a-z0-9._-]+$/i.test(username)||dupe||(!old&&password.length<6)||(old&&password&&password.length<6)){err.style.display='block';err.textContent='Verificá los datos: usuario único sin espacios y contraseña mínima de 6 caracteres.';return}if(old){old.name=name;old.username=username;if(password)old.password=password;old.role=d.get('role');old.active=d.get('active')==='true';closeDialog();render();notify('Cuenta actualizada')}else{users.push({id:nextUser++,name,username,password,role:d.get('role'),active:true});saveDemo();showDialog({type:'created',username,password})}return}if(f.id==='notetaskform'){if(me?.role!=='admin')return;const d=new FormData(f);sendTaskNote(dialog.taskType,dialog.taskId,String(d.get('text')||''),d.get('allowReply')==='on');return}if(f.id==='bookingform'){
  if(me?.role!=='admin')return;
