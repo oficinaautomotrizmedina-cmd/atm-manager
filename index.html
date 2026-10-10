@@ -796,7 +796,7 @@ let historyBooted=false,suppressHistory=false,lastHistoryJSON='',historyRoute=''
 let historyGroup=Number(history.state?.atmHistoryGroup)||0,highlightNotice=null,highlightWork=null;
 // Only genuine screen and modal transitions create browser history entries.
 function navRoute(){return JSON.stringify([tab,employee,thread,dialog?.type||null,dialog?.id??dialog?.taskId??null]);}
-function snapshotState(){return {atmManager:true,atmHistoryGroup:historyGroup,meId:me?.id||null,tab,employee,thread,day,week,filter,logDay,logWeek,logEmployee,logCategory,monthCursor,ctx,dialog:dialog?.type==='created'?null:dialog,draft};}
+function snapshotState(){return {atmManager:true,atmHistoryGroup:historyGroup,meId:me?.id||null,tab,employee,thread,day,week,filter,logDay,logWeek,logEmployee,logCategory,monthCursor,ctx,dialog:['created','logdelete'].includes(dialog?.type)?null:dialog,draft};}
 function restoreState(s){atmClockDismiss();if(!me)return;tab=s?.tab||'calendar';employee=s?.employee??null;thread=s?.thread??null;day=s?.day||today;week=s?.week||day;filter=s?.filter||'all';logDay=s?.logDay||day;logWeek=s?.logWeek||logDay;logEmployee=s?.logEmployee||'all';logCategory=s?.logCategory||'all';monthCursor=s?.monthCursor||day.slice(0,7)+'-01';ctx=s?.ctx||null;dialog=s?.dialog||null;draft=s?.draft||'';error='';render();}
 function syncHistory(replace=false){
  const st=snapshotState(),json=JSON.stringify(st),route=navRoute();
@@ -1032,6 +1032,173 @@ root.addEventListener('submit',async e=>{
   if(me?.role==='admin'&&dialog?.type==='cleanup'&&cleanupState===c)overlay.innerHTML=modalHTML();
  }
 },true);
+
+/* Technical logs: long press a calendar date, delete one, or select and delete multiple. */
+function atmLogCurrentVisible(){
+ return relevantLogs(logDay,logEmployee,logCategory).filter(x=>!!x.uuid);
+}
+function atmLogCancelLongPress(){if(logHoldTimer){clearTimeout(logHoldTimer);logHoldTimer=null}}
+function atmLogShowDayTrash(date){
+ if(!me||tab!=='logs'||!relevantLogs(date).length)return;
+ atmLogCancelLongPress();
+ logHoldDay=date;logDay=date;logWeek=date;logIgnoreDayClickUntil=Date.now()+1100;
+ logSelected.clear();
+ render();
+}
+root.addEventListener('pointerdown',e=>{
+ if(e.button!==0||tab!=='logs'||dialog)return;
+ const dateButton=e.target.closest('.atm-log-day-tile .log-day');
+ if(!dateButton)return;
+ const date=dateButton.dataset.day;
+ if(!relevantLogs(date).length)return;
+ atmLogCancelLongPress();
+ const pointX=e.clientX,pointY=e.clientY;
+ logHoldTimer=setTimeout(()=>{
+  logHoldTimer=null;
+  atmLogShowDayTrash(date);
+ },620);
+ const cancelOnMove=ev=>{
+  if(Math.hypot(ev.clientX-pointX,ev.clientY-pointY)>14)atmLogCancelLongPress();
+ };
+ dateButton.addEventListener('pointermove',cancelOnMove,{passive:true});
+ dateButton.addEventListener('pointerup',()=>dateButton.removeEventListener('pointermove',cancelOnMove),{once:true});
+},true);
+for(const eventName of ['pointerup','pointercancel','pointerleave','scroll']){
+ root.addEventListener(eventName,atmLogCancelLongPress,true);
+}
+root.addEventListener('contextmenu',e=>{
+ const button=e.target.closest('.atm-log-day-tile .log-day');
+ if(button&&tab==='logs'&&!dialog){
+  e.preventDefault();e.stopPropagation();atmLogShowDayTrash(button.dataset.day);
+ }
+},true);
+async function atmLogAskDelete(mode,ids=[],date=null){
+ if(!me||!cloud.sb||!['day','ids'].includes(mode))return;
+ const requestIds=mode==='ids'?[...new Set(ids)]:[];
+ if(mode==='ids'&&!requestIds.length)return;
+ const page={type:'logdelete',mode,ids:requestIds,day:mode==='day'?date:null,
+   preview:null,error:'',loading:true};
+ showDialog(page);
+ await atmLogGetPreview(page);
+}
+async function atmLogGetPreview(page){
+ if(!page||dialog!==page)return;
+ page.loading=true;page.error='';page.preview=null;overlay.innerHTML=modalHTML();
+ try{
+  if(!me?.uuid||!cloud.sb)throw new Error('No hay sesión válida.');
+  const {data,error}=await cloud.sb.auth.getSession();
+  if(error||!data?.session?.access_token||data.session.user?.id!==me.uuid)throw new Error('Tu sesión expiró. Ingresá nuevamente.');
+  const response=await cloudAPI({action:'logs_preview',mode:page.mode,day:page.day,ids:page.ids},data.session.access_token);
+  if(!response?.ok||!Array.isArray(response.ids)||response.count!==response.ids.length)throw new Error('Supabase no entregó una vista previa válida.');
+  page.preview=response;
+ }catch(err){page.error=String(err.message||'No se pudieron revisar los registros.');}
+ finally{
+  page.loading=false;
+  if(dialog===page)overlay.innerHTML=modalHTML();
+ }
+}
+async function atmLogDeleteNow(page){
+ if(!page?.preview?.ids?.length||dialog!==page||!me?.uuid||page.loading)return;
+ if(!cloud.ready||cloud.busy||cloud.loading||cloud.retryPaused||draftSignature()!==cloud.revision){
+  page.error='Esperá a que los mensajes y los trabajos terminen de sincronizarse y volvé a consultar.';
+  page.preview=null;overlay.innerHTML=modalHTML();return;
+ }
+ page.loading=true;page.error='';overlay.innerHTML=modalHTML();
+ const userId=me.uuid;
+ let deletedSuccessfully=false;
+ try{
+  const {data,error}=await cloud.sb.auth.getSession();
+  if(error||!data?.session?.access_token||data.session.user?.id!==userId)throw new Error('La sesión expiró. Ingresá nuevamente.');
+  // Pause background writes: this deletion is authoritative on Supabase.
+  cloud.ready=false;clearTimeout(cloud.writeTimer);
+  const response=await cloudAPI({
+    action:'logs_delete',mode:page.mode,day:page.day,ids:page.ids,
+    expected_ids:page.preview.ids,confirm:'ELIMINAR'
+  },data.session.access_token);
+  if(!response?.ok||response.deleted!==true||
+     response.count!==page.preview.count||!Array.isArray(response.ids))
+    throw new Error('No se recibió una confirmación completa del borrado.');
+  const removed=new Set(response.ids);
+  messages=messages.filter(m=>!removed.has(m.uuid));
+  for(const id of removed){logSelected.delete(id);cloud.lastNotice.delete(id);atmForgetPending(id,userId)}
+  logSelectMode=false;logHoldDay=null;
+  reportLogs();
+  cloud.revision=draftSignature();
+  deletedSuccessfully=true;
+  if(dialog===page)closeDialog();
+  render();
+  notify('Se eliminaron '+response.count+' registro'+(response.count===1?'':'s')+' de Supabase y del chat.');
+  await cloudLoad();
+ }catch(err){
+  page.error=String(err.message||'No se pudo completar la eliminación.');
+  page.preview=null; // Recheck required before any retry.
+  if(dialog===page)overlay.innerHTML=modalHTML();
+ }finally{
+  page.loading=false;
+  if(!cloud.ready)cloud.ready=true;
+  if(dialog===page)overlay.innerHTML=modalHTML();
+  if(deletedSuccessfully&&me?.uuid===userId)cloudRefresh();
+ }
+}
+root.addEventListener('change',e=>{
+ if(e.target.id==='atm-log-ack'){
+  const button=overlay.querySelector('[data-a="atm-log-confirm-delete"]');
+  if(button)button.disabled=!e.target.checked;
+ }
+},true);
+root.addEventListener('click',e=>{
+ const btn=e.target.closest('[data-a]');
+ if(!btn)return;
+ const action=btn.dataset.a;
+ if(action==='logdate'&&Date.now()<logIgnoreDayClickUntil){
+  e.preventDefault();e.stopImmediatePropagation();return;
+ }
+ const actions=new Set(['atm-log-day-trash','atm-log-start-select','atm-log-cancel-select',
+   'atm-log-select-one','atm-log-select-all','atm-log-delete-selected','atm-log-delete-one',
+   'atm-log-retry','atm-log-confirm-delete']);
+ if(!actions.has(action)){
+  if(['logdate','logprev','lognext','openlogs','logsdate'].includes(action)){logSelected.clear();logHoldDay=null}
+  return;
+ }
+ e.preventDefault();e.stopImmediatePropagation();
+ if(action==='atm-log-retry'&&dialog?.type==='logdelete'){atmLogGetPreview(dialog);return;}
+ if(action==='atm-log-confirm-delete'&&dialog?.type==='logdelete'){
+  if(!btn.disabled&&overlay.querySelector('#atm-log-ack')?.checked)atmLogDeleteNow(dialog);
+  return;
+ }
+ if(action==='atm-log-day-trash'){
+  if(btn.dataset.day===logHoldDay&&relevantLogs(logHoldDay).length)atmLogAskDelete('day',[],logHoldDay);
+  return;
+ }
+ if(!me||tab!=='logs')return;
+ const current=atmLogCurrentVisible();
+ if(action==='atm-log-start-select'){logSelectMode=true;logSelected.clear();render();return;}
+ if(action==='atm-log-cancel-select'){logSelectMode=false;logSelected.clear();render();return;}
+ if(action==='atm-log-select-one'){
+  const uuid=btn.dataset.uuid;
+  if(!current.some(l=>l.uuid===uuid))return;
+  if(logSelected.has(uuid))logSelected.delete(uuid);else logSelected.add(uuid);
+  render();return;
+ }
+ if(action==='atm-log-select-all'){
+  const ids=current.map(l=>l.uuid);
+  if(ids.length&&ids.every(x=>logSelected.has(x)))ids.forEach(x=>logSelected.delete(x));
+  else ids.forEach(x=>logSelected.add(x));
+  render();return;
+ }
+ if(action==='atm-log-delete-selected'){
+  const ids=current.map(x=>x.uuid).filter(x=>logSelected.has(x.uuid||x));
+  // Filter on UUID strings, not internal log row IDs.
+  const chosen=current.map(x=>x.uuid).filter(id=>logSelected.has(id));
+  if(chosen.length)atmLogAskDelete('ids',chosen);
+  return;
+ }
+ if(action==='atm-log-delete-one'){
+  const id=btn.dataset.uuid;
+  if(logs.some(l=>l.uuid===id))atmLogAskDelete('ids',[id]);
+ }
+},true);
+
 root.addEventListener('click',e=>{if(Date.now()<blockedClick&&(e.target.closest('[data-a="date"]')||e.target.closest('[data-a="editjob"]')))return;const navbtn=e.target.closest('[data-tab]');if(navbtn){tab=navbtn.dataset.tab;employee=null;thread=null;ctx=null;draft='';closeDialog();render();return}const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a;if(a==='atm-open-calendar-change'){viewCalendarChange(b.dataset.id);return}if(a==='close'){closeDialog();return}if(a==='atm-account-menu'){if(me)showDialog({type:'accountmenu'});return}if(a==='backcalendar'){tab='calendar';thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='logout'){logout();return}if(a==='openusers'){tab='users';employee=null;thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='openlogs'){logDay=(tab==='calendar'?day:logDay);logWeek=logDay;logEmployee='all';logCategory='all';tab='logs';thread=null;employee=null;ctx=null;draft='';closeDialog();render();return}if(a==='logsdate'){logDay=day;logWeek=day;logEmployee='all';logCategory='all';tab='logs';closeDialog();render();return}if(a==='logprev'||a==='lognext'){logDay=dayAdd(logDay,a==='logprev'?-7:7);logWeek=logDay;render();return}if(a==='logdate'){logDay=b.dataset.day;logWeek=logDay;render();return}if(a==='openlog'){const entry=logs.find(x=>x.id===Number(b.dataset.id));if(entry&&(me.role==='admin'||entry.employeeId===me.id))showDialog({type:'logdetail',id:entry.id});return}if(a==='newuser'){showDialog({type:'newuser'});return}if(a==='edituser'){showDialog({type:'edituser',id:Number(b.dataset.id)});return}if(a==='showmonth'&&me?.role==='admin'&&tab==='calendar'){monthCursor=day.slice(0,7)+'-01';showDialog({type:'monthpicker'});return}if(a==='monthprev'||a==='monthnext'){const mm=new Date(monthCursor+'T12:00:00Z');mm.setUTCMonth(mm.getUTCMonth()+(a==='monthprev'?-1:1));monthCursor=mm.toISOString().slice(0,7)+'-01';showDialog({type:'monthpicker'});return}if(a==='monthdate'){day=b.dataset.day;week=day;closeDialog();render();return}if(a==='newbooking'){showDialog({type:'newbooking'});return}if(a==='editbooking'){const ap=appointments.find(x=>x.id===Number(b.dataset.booking));if(ap){day=ap.day;week=ap.day;showDialog({type:'editbooking',id:ap.id})}return}if(a==='askdeletebooking'){showDialog({type:'deleteBooking',id:dialog.id});return}if(a==='confirmdeletebooking'){const prev=appointments.find(x=>x.id===dialog.id);appointments=appointments.filter(x=>x.id!==dialog.id);if(prev)renumber(prev.userId,prev.day);closeDialog();render();notify('Agendamiento eliminado');return}if(a==='newjob'){showDialog({type:'newjob'});return}if(a==='editjob'){showDialog({type:'editjob',id:Number(b.dataset.job)});return}if(a==='prev'||a==='next'){day=dayAdd(day,a==='prev'?-7:7);week=day;render();return}if(a==='date'){day=b.dataset.day;week=day;render();return}if(a==='employee'){employee=Number(b.dataset.id);render();return}if(a==='pending'){employee='pending';filter='all';render();return}if(a==='backemployee'){employee=null;render();return}if(a==='openchat'){thread=Number(b.dataset.id);ctx=null;draft='';adminAllowReply=false;render();return}if(a==='gotonotices'){tab='chat';thread=null;ctx=null;draft='';render();return}if(a==='replyinstruction'){const m=messages.find(x=>x.id===Number(b.dataset.id));if(canReplyTo(m)){ctx={category:'Respuesta a instrucción',replyTo:m.id,vehicle:m.vehicle||null,taskType:m.taskType||null,taskId:m.taskId||null};draft='';render();setTimeout(()=>main.querySelector('#draft')?.focus(),0)}return}if(a==='notebooking'||a==='notejob'){if(me?.role!=='admin')return;showDialog({type:'adminnote',taskType:a==='notebooking'?'booking':'job',taskId:Number(b.dataset.id)});return}if(a==='backchat'){thread=null;render();return}if(a==='plus'){showDialog({type:'categories'});return}if(a==='category'){category(b.dataset.cat);return}if(a==='backcategories'){showDialog({type:'categories'});return}if(a==='selectbooking'){const ap=appointments.find(x=>x.id===Number(b.dataset.booking)&&x.userId===me.id);if(ap){ctx={category:dialog.category,vehicle:ap.vehicle,jobId:'a'+ap.id,bookingId:ap.id,taskType:'booking',taskId:ap.id,taskDetail:ap.instructions,workDay:ap.day,priority:ap.priority};draft=dialog.category==='Registrar bitácora'?drafts[me.id+':'+ctx.jobId]||'':'';closeDialog();render()}return}if(a==='selectcar'){const j=jobs.find(x=>x.id===Number(b.dataset.job)&&x.userId===me.id);if(j){ctx={category:dialog.category,vehicle:j.title,jobId:j.id,taskType:'job',taskId:j.id,taskDetail:j.detail,workDay:j.day,priority:null};draft=dialog.category==='Registrar bitácora'?drafts[me.id+':'+j.id]||'':'';closeDialog();render()}return}if(a==='clearctx'){ctx=null;draft='';render();return}if(a==='savedraft'){if(ctx?.jobId)drafts[me.id+':'+ctx.jobId]=draft;ctx=null;draft='';render();notify('Bitácora guardada como borrador');return}if(a==='chatmenu'||a==='allmenu'){showDialog({type:a});return}if(a==='viewlogs'){showDialog({type:'logs'});return}if(a==='clearask'||a==='clearallask'){showDialog({type:a});return}if(a==='clearconfirm'){clearChats();return}if(a==='copy'||a==='move'){transfer(a==='move');return}if(a==='deleteconfirm'){removeStuff();return}});
 root.addEventListener('submit',e=>{e.preventDefault();const f=e.target;if(f.id==='login'){const d=new FormData(f);doLogin(d.get('username'),d.get('password'));return}if(f.id==='userform'){const d=new FormData(f),name=String(d.get('name')||'').trim(),username=String(d.get('username')||'').trim(),password=String(d.get('password')||''),old=user(dialog.id),dupe=users.some(u=>u.username.toLowerCase()===username.toLowerCase()&&u.id!==old?.id);const err=overlay.querySelector('#usererror');if(!name||!/^[a-z0-9._-]+$/i.test(username)||dupe||(!old&&password.length<6)||(old&&password&&password.length<6)){err.style.display='block';err.textContent='Verificá los datos: usuario único sin espacios y contraseña mínima de 6 caracteres.';return}if(old){old.name=name;old.username=username;if(password)old.password=password;old.role=d.get('role');old.active=d.get('active')==='true';closeDialog();render();notify('Cuenta actualizada')}else{users.push({id:nextUser++,name,username,password,role:d.get('role'),active:true});saveDemo();showDialog({type:'created',username,password})}return}if(f.id==='notetaskform'){if(me?.role!=='admin')return;const d=new FormData(f);sendTaskNote(dialog.taskType,dialog.taskId,String(d.get('text')||''),d.get('allowReply')==='on');return}if(f.id==='bookingform'){
  if(me?.role!=='admin')return;
