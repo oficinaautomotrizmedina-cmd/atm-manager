@@ -928,7 +928,7 @@ function pointerEnd(e,success){
 }
 
 window.addEventListener('pointerup',e=>pointerEnd(e,true));window.addEventListener('pointercancel',e=>pointerEnd(e,false));
-root.addEventListener('input',e=>{if(e.target.id==='draft')draft=e.target.value});root.addEventListener('change',e=>{if(e.target.id==='filter'){filter=e.target.value;render()}else if(e.target.id==='logperson'&&me?.role==='admin'){logEmployee=e.target.value;render()}else if(e.target.id==='logcategory'){logCategory=e.target.value;render()}else if(e.target.id==='allowReply'){adminAllowReply=e.target.checked}else if(e.target.id==='serviceType'){const other=overlay.querySelector('#serviceOtherWrap');if(other)other.style.display=e.target.value==='Otro'?'flex':'none'}});
+root.addEventListener('input',e=>{if(e.target.id==='draft')draft=e.target.value});root.addEventListener('change',e=>{if(e.target.id==='filter'){filter=e.target.value;render()}else if(e.target.id==='logperson'&&me?.role==='admin'){logSelected.clear();logHoldDay=null;logEmployee=e.target.value;render()}else if(e.target.id==='logcategory'){logSelected.clear();logHoldDay=null;logCategory=e.target.value;render()}else if(e.target.id==='allowReply'){adminAllowReply=e.target.checked}else if(e.target.id==='serviceType'){const other=overlay.querySelector('#serviceOtherWrap');if(other)other.style.display=e.target.value==='Otro'?'flex':'none'}});
 
 root.addEventListener('click',e=>{
  const b=e.target.closest('[data-a="atm-cleanup-open"]');
