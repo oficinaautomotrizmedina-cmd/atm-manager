@@ -1305,8 +1305,80 @@ function cloudSubscribe(){if(cloud.realtime)cloud.sb.removeChannel(cloud.realtim
 function cloudRefresh(){if(!me||!cloud.ready||cloud.retryPaused||cloud.expiring)return;clearTimeout(refreshTimeout);refreshTimeout=setTimeout(()=>{if(cloud.busy||dialog||draft.trim()){cloudRefresh();return}if(draftSignature()!==cloud.revision){cloudWrite();cloudRefresh();return}cloudLoad()},1200);}
 async function cloudUserForm(f){const d=new FormData(f),name=String(d.get('name')||'').trim(),username=String(d.get('username')||'').trim(),password=String(d.get('password')||''),old=user(dialog?.id),role=String(d.get('role')||'employee');const err=overlay.querySelector('#usererror');
  if(!name||!/^[a-z0-9_]{2,32}$/i.test(username)||(!old&&password.length<10)||(old&&password&&password.length<10)){if(err){err.style.display='block';err.textContent='Usuario: letras, números o guion bajo; contraseña: mínimo 10 caracteres.'}return}
- try{busyStatus('Guardando cuenta…');const {data:{session},error:sessionError}=await cloud.sb.auth.getSession();if(sessionError||!session?.access_token)throw new Error('Tu sesión expiró. Cerrá sesión e ingresá de nuevo.');await cloudAPI({action:old?'update':'create',...(old?{user_id:old.uuid}:{}),username,display_name:name,role,active:old?d.get('active')==='true':true,...(password?{password}:{})},session?.access_token);const created=!old;closeDialog();await cloudLoad();if(created)showDialog({type:'created',username,password});else notify('Cuenta actualizada');busyStatus('');}
+ try{busyStatus('Guardando cuenta…');const {data:{session},error:sessionError}=await cloud.sb.auth.getSession();if(sessionError||!session?.access_token)throw new Error('Tu sesión expiró. Cerrá sesión e ingresá de nuevo.');await cloudAPI({action:old?'update':'create',...(old?{user_id:old.uuid}:{}),username,display_name:name,role,active:old?d.get('active')==='true':true,...(password?{password}:{})},session?.access_token);const created=!old;closeDialog();await cloudLoad();if(created||password)showDialog({type:'created',username,password,changed:!created});else notify('Cuenta actualizada');busyStatus('');}
  catch(e){if(err){err.style.display='block';err.textContent=e.message}busyStatus('');}}
+/* Secure account deletion and transient password visibility. */
+root.addEventListener('click',event=>{
+ const toggle=event.target.closest('[data-a="atm-toggle-password"]');
+ const del=event.target.closest('[data-a="atm-user-delete-open"]');
+ if(!toggle&&!del)return;
+ event.preventDefault();event.stopImmediatePropagation();
+ if(toggle){
+  const input=overlay.querySelector('#'+toggle.dataset.target);
+  if(!input)return;
+  if(!input.value&&input.id==='atm-user-password'&&dialog?.type==='edituser'){
+   notify('Supabase no permite recuperar la contraseña vigente. Escribí una nueva para mostrarla o cambiarla.');
+   input.focus();return;
+  }
+  const visible=input.type==='password';
+  input.type=visible?'text':'password';
+  toggle.textContent=visible?'◉ Ocultar':'👁 Ver';
+  toggle.setAttribute('aria-pressed',String(visible));
+  input.focus();
+  return;
+ }
+ if(del&&me?.role==='admin')atmUserDeletionPreview(Number(del.dataset.id));
+},true);
+async function atmUserDeletionPreview(id){
+ const account=user(id);
+ if(!account?.uuid||account.is_master||account.uuid===me?.uuid||me?.role!=='admin')return;
+ const page={type:'userdelete',id,loading:true,impact:null,error:''};
+ showDialog(page);
+ try{
+  if(!cloud.sb||!me?.uuid)throw new Error('Iniciá sesión nuevamente.');
+  const {data,error}=await cloud.sb.auth.getSession();
+  if(error||!data?.session?.access_token||data.session.user?.id!==me.uuid)throw new Error('Tu sesión no es válida. Volvé a ingresar.');
+  const result=await cloudAPI({action:'delete_preview',user_id:account.uuid},data.session.access_token);
+  if(result.user_id!==account.uuid||result.username!==account.username||!result.impact)throw new Error('La vista previa no coincide con el usuario seleccionado.');
+  page.impact=result.impact;
+ }catch(err){page.error=String(err.message||'No se pudo consultar esta cuenta.');}
+ finally{
+  page.loading=false;
+  if(dialog===page)overlay.innerHTML=modalHTML();
+ }
+}
+async function atmUserDeletionConfirm(form){
+ const d=new FormData(form),page=dialog,account=user(page?.id);
+ const errorBox=overlay.querySelector('#atm-user-delete-error');
+ if(me?.role!=='admin'||page?.type!=='userdelete'||page.loading||!page.impact||!account?.uuid||account.uuid===me?.uuid||account.is_master)return;
+ if(String(d.get('confirmUsername')||'')!==account.username||d.get('accept')!=='on'){
+  if(errorBox){errorBox.style.display='block';errorBox.textContent='Escribí exactamente el nombre de usuario y aceptá la advertencia.';}return;
+ }
+ page.loading=true;
+ overlay.innerHTML=modalHTML();
+ try{
+  const {data,error}=await cloud.sb.auth.getSession();
+  if(error||!data?.session?.access_token||data.session.user?.id!==me.uuid)throw new Error('Tu sesión expiró. Ingresá nuevamente.');
+  const result=await cloudAPI({action:'delete_user',user_id:account.uuid,confirm_username:account.username,confirm:'ELIMINAR',expected_impact:page.impact},data.session.access_token);
+  if(!result?.ok||result.deleted!==true||result.user_id!==account.uuid)throw new Error('Supabase no confirmó la eliminación.');
+  if(dialog===page)closeDialog();
+  await cloudLoad();
+  notify('La cuenta '+account.username+' se eliminó de Supabase.');
+ }catch(err){
+  page.error=String(err.message||'No se pudo eliminar la cuenta.');
+  page.impact=null;
+  if(dialog===page)overlay.innerHTML=modalHTML();
+ }finally{
+  page.loading=false;
+  if(dialog===page)overlay.innerHTML=modalHTML();
+ }
+}
+root.addEventListener('submit',e=>{
+ if(e.target.id!=='atm-user-delete-form')return;
+ e.preventDefault();e.stopImmediatePropagation();
+ atmUserDeletionConfirm(e.target);
+},true);
+
 // Capture sensitive forms before the original v28 demonstration handlers.
 root.addEventListener('submit',e=>{const f=e.target;if(f.id!=='login'&&f.id!=='userform')return;e.preventDefault();e.stopImmediatePropagation();if(f.id==='login'){const d=new FormData(f);cloudLogin(String(d.get('username')||''),String(d.get('password')||''));}else cloudUserForm(f);},true);
 root.addEventListener('click',e=>{if(e.target.closest('[data-a="logout"]')){e.preventDefault();e.stopImmediatePropagation();cloudLogout();}},true);
