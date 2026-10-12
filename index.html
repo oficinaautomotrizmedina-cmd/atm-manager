@@ -652,7 +652,8 @@ function modalHTML(){if(!dialog)return '';let h='',sheet=false;
 const footer='<button class="btn ghost" data-a="close">Cancelar</button>';
 if(dialog.type==='accountmenu'){
  h='<div class="row"><h3>Opciones del taller</h3><button class="btn ghost" data-a="close" aria-label="Cerrar menú">×</button></div>'+
- '<button class="opt" data-a="atm-push-enable"><span class="ico">🔔</span><span><strong>Activar notificaciones</strong><small>Permisos y avisos en este teléfono</small></span></button>'+
+ '<button class="opt" data-a="atm-push-enable"><span class="ico">🔔</span><span><strong>Activar notificaciones</strong><small>Registrar este teléfono para recibir avisos de chat</small></span></button>'+
+ '<button class="opt" data-a="atm-push-test"><span class="ico">📳</span><span><strong>Probar notificaciones</strong><small>Enviar una prueba solamente a tus dispositivos</small></span></button>'+
  '<button class="opt" data-a="gotonotices"><span class="ico">▤</span><span><strong>Notificaciones</strong></span></button>'+
  (me?.role==='admin'?'<button class="opt" data-a="openusers"><span class="ico">👤</span><span><strong>Usuarios</strong></span></button><button class="opt" data-a="atm-cleanup-open"><span class="ico">🧹</span><span><strong>Limpiar historial</strong><small>Seleccionar fechas y consultar registros</small></span></button>':'')+
  '<button class="opt atm-menu-logout" data-a="logout"><span class="ico">↪</span><span><strong>Cerrar sesión</strong></span></button>';
@@ -1438,10 +1439,27 @@ async function atmPushCall(action,fields={}){
  return body;
 }
 async function atmPushDispatch(action,id){
- // Web Push exclusivo para mensajes de chat guardados en atm_notices.
+ // Una notificación de chat se envía tras confirmar el almacenamiento del mensaje.
  if(action!=='notice')return null;
- try{return await atmPushCall('notice',{notice_id:id})}
- catch(e){console.warn('El mensaje quedó guardado, pero no se pudo confirmar el push:',e.message)}
+ try{
+  const result=await atmPushCall('notice',{notice_id:id});
+  const totals=(result?.results||[]).reduce((x,r)=>({
+   sent:x.sent+Number(r.sent||0),registered:x.registered+Number(r.registered||0),
+   failed:x.failed+Number(r.failed||0),already:x.already+Number(r.already||0)
+  }),{sent:0,registered:0,failed:0,already:0});
+  if(!result?.ok||((totals.sent+totals.already)===0)){
+   console.warn('Push no entregado a servicio de notificaciones:',totals);
+   notify(totals.registered===0?
+    'Mensaje guardado, pero el destinatario debe activar las notificaciones en su teléfono.':
+    'Mensaje guardado, pero no se pudo enviar la notificación push. Revisá los dispositivos.');
+  }else if(totals.failed){
+   console.warn('Algunos dispositivos no recibieron push:',totals.failed);
+  }
+  return result;
+ }catch(e){
+  console.warn('Mensaje guardado, pero no se pudo confirmar el push:',e.message);
+  notify('Mensaje guardado, pero falló la notificación push.');
+ }
  return null;
 }
 async function atmPushRegister(allowNew=false){
@@ -1451,8 +1469,16 @@ async function atmPushRegister(allowNew=false){
  const reg=await navigator.serviceWorker.ready;
  let sub=await reg.pushManager.getSubscription();
  const oldOwner=localStorage.getItem('atm_push_owner');
+ const pushKey=atmPushKey(ATM_VAPID_PUBLIC);
  if(sub&&oldOwner&&oldOwner!==me.uuid){await sub.unsubscribe();sub=null}
- if(!sub&&allowNew)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:atmPushKey(ATM_VAPID_PUBLIC)});
+ // A notification permission may survive after an outdated VAPID subscription.
+ if(sub&&sub.options?.applicationServerKey){
+  const usedKey=new Uint8Array(sub.options.applicationServerKey);
+  if(usedKey.length!==pushKey.length||usedKey.some((b,i)=>b!==pushKey[i])){
+   await sub.unsubscribe();sub=null;
+  }
+ }
+ if(!sub&&allowNew)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pushKey});
  if(!sub)return false;
  const data=sub.toJSON(),keys=data.keys||{};
  if(!data.endpoint||!keys.p256dh||!keys.auth)throw new Error('El teléfono no entregó las claves necesarias.');
@@ -1485,7 +1511,12 @@ async function atmEnablePush(){
 async function atmPushOnLogin(){
  if(!me?.uuid)return;
  if('Notification' in window&&Notification.permission==='granted'){
-  try{await atmPushRegister(false)}catch(e){console.warn('Actualización de Web Push pendiente',e.message)}
+  // Permission is not enough: a working PushSubscription must be registered.
+  try{await atmPushRegister(true)}
+  catch(e){
+   console.warn('Registro Web Push pendiente',e.message);
+   notify('No fue posible registrar notificaciones en este teléfono. Revisá el menú del taller.');
+  }
  }else if('Notification' in window&&Notification.permission==='default'){
   atmPushPrompt();
  }
@@ -1503,12 +1534,33 @@ async function atmPushOnLogout(){
   localStorage.removeItem('atm_push_owner');
  }catch(e){console.warn('No se pudo desactivar la suscripción del dispositivo',e.message)}
 }
+let atmPushTestPending=false,lastAtmPushTestAt=0;
+async function atmPushTest(){
+ if(atmPushTestPending)return;
+ if(Date.now()-lastAtmPushTestAt<45000){
+  notify('Esperá unos segundos antes de enviar otra prueba.');return;
+ }
+ atmPushTestPending=true;
+ try{
+  const valid=await atmPushRegister(true);
+  if(!valid)throw new Error('No existe una suscripción push activa.');
+  const result=await atmPushCall('test');
+  lastAtmPushTestAt=Date.now();
+  if(!result?.ok||!Number(result.sent||0))
+   throw new Error(result.registered===0?'Este teléfono no quedó registrado.':'El servicio no pudo enviar la prueba.');
+  notify('Prueba enviada. Comprobá la bandeja de notificaciones de tu teléfono.');
+ }catch(e){
+  notify('No se pudo verificar push: '+String(e.message||'Revisá la configuración.').slice(0,110));
+ }finally{atmPushTestPending=false;}
+}
 root.addEventListener('click',event=>{
  const on=event.target.closest('[data-a="atm-push-enable"]');
+ const test=event.target.closest('[data-a="atm-push-test"]');
  const off=event.target.closest('[data-a="atm-push-dismiss"]');
- if(!on&&!off)return;
+ if(!on&&!off&&!test)return;
  event.preventDefault();event.stopImmediatePropagation();
  if(on)atmEnablePush();
+ if(test)atmPushTest();
  if(off){if(me)localStorage.setItem('atm_push_prompted_'+me.uuid,'1');root.querySelector('#atm-push-prompt')?.remove()}
 },true);
 
