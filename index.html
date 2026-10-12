@@ -1514,10 +1514,14 @@ root.addEventListener('click',event=>{
 
 async function cloudAPI(b,token){const response=await fetch(ATM_URL+'/functions/v1/atm-api',{method:'POST',headers:{'Content-Type':'application/json',apikey:ATM_PUBLIC_KEY,...(token?{'Authorization':'Bearer '+token}:{})},body:JSON.stringify(b)});const d=await response.json().catch(()=>({}));if(!response.ok)throw new Error(d.error||'Error HTTP '+response.status);return d;}
 async function cloudLogin(username,password){error='';busyStatus('Ingresando…');try{
- const d=await cloudAPI({action:'login',username,password});const {data,error:e}=await cloud.sb.auth.setSession({access_token:d.access_token,refresh_token:d.refresh_token});if(e||!data.session)throw e||new Error('No se pudo iniciar sesión');
+ const d=await cloudAPI({action:'login',username,password});
+ cloud.sessionRestoring=true;
+ const {data,error:e}=await cloud.sb.auth.setSession({access_token:d.access_token,refresh_token:d.refresh_token});
+ if(e||!data.session)throw e||new Error('No se pudo iniciar sesión');
  await cloudAfterLogin(data.session.user.id);
  busyStatus('');
- }catch(e){console.error('Acceso fallido',e);error=e.message||'No se pudo iniciar sesión.';busyStatus('');render();}}
+ }catch(e){console.error('Acceso fallido',e);error=e.message||'No se pudo iniciar sesión.';busyStatus('');render();}
+ finally{cloud.sessionRestoring=false;}}
 async function cloudAfterLogin(id){const {data,error:e}=await cloud.sb.from('atm_profiles').select('*').eq('user_id',id).maybeSingle();if(e||!data?.active)throw e||new Error('La cuenta no está activa');
  cloud.userIds.set(id,1);me={uuid:id,id:1,username:data.username,name:data.display_name,role:data.role,active:data.active,is_master:data.is_master};
  tab='calendar';day=BASE;week=BASE;filter='all';employee=null;thread=null;ctx=null;dialog=null;draft='';cloud.ready=false;loadUIReadState();cloud.retryPaused=false;cloud.expiring=false;await cloudLoad();if(historyBooted)syncHistory(true);await atmDeliverPending();cloudSubscribe();
