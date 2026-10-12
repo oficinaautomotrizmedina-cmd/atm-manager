@@ -909,8 +909,12 @@ function removeStuff(){
 
 function clearChats(){
  if(!me)return;
- const id=me.role==='admin'?thread:me.id,clearedAt=Date.now();
- const hide=owner=>{const uuid=uuidFor(owner);if(uuid)seen[me.uuid+':'+uuid]={until:clearedAt};};
+ const id=me.role==='admin'?thread:me.id;
+ // Use the latest confirmed message time, not the phone clock (which may run ahead).
+ const hide=owner=>{const uuid=uuidFor(owner);if(!uuid)return;
+  const latest=messages.filter(m=>m.employeeId===Number(owner)).reduce((max,m)=>Math.max(max,m.ts||0),0);
+  seen[me.uuid+':'+uuid]={until:latest};
+ };
  if(dialog.type==='clearallask')staff().forEach(x=>hide(x.id));
  else if(id!=null)hide(id);
  persistUIReadState();
