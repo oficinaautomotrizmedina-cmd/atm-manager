@@ -1356,7 +1356,7 @@ async function cloudLoad(){if(!cloud.sb||cloud.busy||cloud.loading||!me)return;c
  messages=remoteMessages.map(row=>noticeToUI(row,workByUuid));const byUuid=new Map(messages.map(m=>[m.uuid,m.id]));messages.forEach(m=>{m.replyTo=m.replyUuid?(byUuid.get(m.replyUuid)||null):null;});reportLogs();
   cloud.readNoticeIds=new Set([...cloud.readNoticeIds,...(readResult.data||[]).map(r=>r.notice_id)]);
   calendarChanges=(remoteCalendar||[]).filter(c=>c.recipient_id===priorUuid);
- cloud.lastWork=new Map(localWorkRows().map(({item,kind})=>[item.uuid,JSON.stringify(rowForWork(item,kind))]));cloud.lastNotice=new Set(messages.map(x=>x.uuid));cloud.revision=draftSignature();cloud.ready=true;cloud.skip=false;
+ cloud.lastWork=new Map(localWorkRows().map(({item,kind})=>[item.uuid,JSON.stringify(rowForWork(item,kind))]));cloud.lastNotice=new Set(messages.map(x=>x.uuid));cloud.revision=draftSignature();cloud.lastRemoteLoadAt=Date.now();cloud.ready=true;cloud.skip=false;
  if(me&&tab==='users'&&me.role!=='admin')tab='calendar';render(true);
  }catch(e){console.error('No se pudo descargar la información',e);busyStatus('Sin sincronizar · Revisá tu conexión');}finally{cloud.skip=false;cloud.loading=false;}}
 async function cloudWrite(){
@@ -1544,7 +1544,27 @@ async function cloudAfterLogin(id){const {data,error:e}=await cloud.sb.from('atm
 async function cloudLogout(){atmRememberPending();await atmPushOnLogout();clearTimeout(cloud.writeTimer);if(cloud.busy)await new Promise(r=>setTimeout(r,800));cloud.ready=false;if(cloud.realtime)await cloud.sb.removeChannel(cloud.realtime);cloud.realtime=null;await cloud.sb.auth.signOut();me=null;users=[];jobs=[];appointments=[];messages=[];logs=[];dialog=null;tab='calendar';error='';seen={};readBy={};cloud.lastWork=new Map();cloud.lastNotice=new Set();cloud.readNoticeIds=new Set();cloud.readCalendarIds=new Set();calendarChanges=[];cloud.userIds=new Map();cloud.workUiIds=new Map();cloud.noticeUiIds=new Map();busyStatus('');render();}
 let refreshTimeout;
 function cloudSubscribe(){if(cloud.realtime)cloud.sb.removeChannel(cloud.realtime);cloud.realtime=cloud.sb.channel('atm-global-v30-2').on('postgres_changes',{event:'*',schema:'public',table:'atm_work_items'},()=>cloudRefresh()).on('postgres_changes',{event:'*',schema:'public',table:'atm_notices'},()=>cloudRefresh()).on('postgres_changes',{event:'*',schema:'public',table:'atm_profiles'},()=>cloudRefresh()).on('postgres_changes',{event:'*',schema:'public',table:'atm_calendar_changes'},()=>cloudRefresh()).subscribe();}
-function cloudRefresh(){if(!me||!cloud.ready||cloud.retryPaused||cloud.expiring)return;clearTimeout(refreshTimeout);refreshTimeout=setTimeout(()=>{if(cloud.busy||dialog||draft.trim()){cloudRefresh();return}if(draftSignature()!==cloud.revision){cloudWrite();cloudRefresh();return}cloudLoad()},1200);}
+/* Batch rapid Realtime events into one refresh and cap redundant full-table loads.
+   Keep push, Realtime, foreground and fallback polling enabled. */
+function cloudRefresh(delay=1200){
+ if(!me||!cloud.ready||cloud.retryPaused||cloud.expiring)return;
+ clearTimeout(refreshTimeout);
+ const sinceLoad=Date.now()-(cloud.lastRemoteLoadAt||0);
+ const wait=Math.max(delay,cloud.lastRemoteLoadAt?4000-sinceLoad:0);
+ refreshTimeout=setTimeout(()=>{
+  if(!me||!cloud.ready||cloud.retryPaused||cloud.expiring)return;
+  if(cloud.busy||cloud.loading||dialog||draft.trim()){
+   cloudRefresh(12000);
+   return;
+  }
+  if(draftSignature()!==cloud.revision){
+   cloudWrite();
+   cloudRefresh(12000);
+   return;
+  }
+  cloudLoad();
+ },wait);
+}
 async function cloudUserForm(f){const d=new FormData(f),name=String(d.get('name')||'').trim(),username=String(d.get('username')||'').trim(),password=String(d.get('password')||''),old=user(dialog?.id),role=String(d.get('role')||'employee');const err=overlay.querySelector('#usererror');
  if(!name||!/^[a-z0-9_]{2,32}$/i.test(username)||(!old&&password.length<10)||(old&&password&&password.length<10)){if(err){err.style.display='block';err.textContent='Usuario: letras, números o guion bajo; contraseña: mínimo 10 caracteres.'}return}
  try{busyStatus('Guardando cuenta…');const {data:{session},error:sessionError}=await cloud.sb.auth.getSession();if(sessionError||!session?.access_token)throw new Error('Tu sesión expiró. Cerrá sesión e ingresá de nuevo.');await cloudAPI({action:old?'update':'create',...(old?{user_id:old.uuid}:{}),username,display_name:name,role,active:old?d.get('active')==='true':true,...(password?{password}:{})},session?.access_token);const created=!old;closeDialog();await cloudLoad();if(created||password)showDialog({type:'created',username,password,changed:!created});else notify('Cuenta actualizada');busyStatus('');}
