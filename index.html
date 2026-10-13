@@ -463,8 +463,9 @@ const reportKinds=[
 ];
 const reportMode=()=>reportKinds.find(x=>x.cat===logCategory)||reportKinds[0];
 function logsHTML(){
- const own=me?.role!=='admin',mode=reportMode(),entries=relevantLogs(logDay,logEmployee,mode.cat),
- daily=relevantLogs(logDay,'all',mode.cat),members=own?[me]:staff();
+ const own=me?.role!=='admin';if(own)logEmployee='all';
+ const mode=reportMode(),entries=relevantLogs(logDay,logEmployee,mode.cat),
+ daily=relevantLogs(logDay,logEmployee,mode.cat),members=own?[me]:staff();
  return '<div class="page">'+heading(own?mode.own:mode.title,'')+
  '<div class="atm-report-tabs" role="group" aria-label="Tipo de registros">'+
  reportKinds.map(x=>'<button type="button" data-a="logview" data-cat="'+esc(x.cat)+'" class="'+(mode.cat===x.cat?'active':'')+'" aria-pressed="'+(mode.cat===x.cat)+'">'+x.icon+' '+x.title+'</button>').join('')+'</div>'+
