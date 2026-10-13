@@ -145,6 +145,11 @@
 .log-detail-content p{margin:0;color:#274e37;font-size:12px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
 .log-shortcut{border:1px solid #c7dfce;background:#edf7f0;border-radius:11px;color:#175d42;display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;padding:11px 12px;width:100%;font-size:12px;font-weight:800}
 .log-shortcut b{background:white;border:1px solid #cfdfd3;border-radius:8px;padding:5px 8px;font-size:10px;color:#115c42}
+.atm-report-shortcuts{display:flex;flex-direction:column;gap:8px}
+.atm-report-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.atm-report-tabs button{min-width:0;min-height:43px;border:1px solid #c4ddce;border-radius:10px;background:white;color:#285541;font-size:12px;font-weight:800;padding:7px 4px}
+.atm-report-tabs button.active{background:#10694e;color:white;border-color:#10694e}
+.atm-task-log-button{background:#eef8f1;border:1px solid #b9d9c6;color:#126244;border-radius:9px;padding:8px 12px;font-size:12px;font-weight:850}
 
 /* ADMIN v19: clearer, lighter visual hierarchy. Employee screen unchanged. */
 #app.is-admin .cal-totals .pill{font-size:11px;padding:8px 10px;font-weight:850}
@@ -350,7 +355,7 @@ function pendingPanel(d,adminCanEdit=false){const arr=pendingBookings(d);if(!arr
  return '<div class="pending-box"><div class="row"><span class="pending-header">◷ PENDIENTES DE ASIGNAR</span><span class="pill">'+arr.length+' vehículos</span></div>'+arr.map(a=>bookingHTML(a,adminCanEdit,null,false)).join('')+'</div>';
 }
 
-let me=null,tab='calendar',employee=null,thread=null,day=BASE,week=BASE,filter='all',logDay=BASE,logWeek=BASE,logEmployee='all',logCategory='all',logSelectMode=false,logSelected=new Set(),logHoldDay=null,logHoldTimer=null,logIgnoreDayClickUntil=0,monthCursor=BASE,dialog=null,ctx=null,draft='',adminAllowReply=false,error='',seen={},readBy={},drag=null,pending=null,toastTimer=null,blockedClick=0;
+let me=null,tab='calendar',employee=null,thread=null,day=BASE,week=BASE,filter='all',logDay=BASE,logWeek=BASE,logEmployee='all',logCategory='Registrar bitácora',logSelectMode=false,logSelected=new Set(),logHoldDay=null,logHoldTimer=null,logIgnoreDayClickUntil=0,monthCursor=BASE,dialog=null,ctx=null,draft='',adminAllowReply=false,error='',seen={},readBy={},drag=null,pending=null,toastTimer=null,blockedClick=0;
 function saveDemo(){cloudChange();}
 function restoreDemo(){}
 function currentSessionId(){const data=readPersisted();return data?.meId??null}
@@ -419,15 +424,15 @@ const opts=[['Informar avance','Seleccionar vehículo e informar el avance','�
 const logCategoryLabels={'Registrar bitácora':'Bitácora','Informar avance':'Avance','Reportar problema':'Problema'};
 const logKindClass={'Registrar bitácora':'','Informar avance':'progress','Reportar problema':'problem'};
 const logClock=ts=>new Date(ts).toLocaleTimeString('es-SV',{timeZone:'America/El_Salvador',hour:'numeric',minute:'2-digit'});
-const relevantLogs=(d,who='all',cat='all')=>logs.filter(x=>x.workDay===d&&(who==='all'||x.employeeId===Number(who))&&(cat==='all'||x.category===cat)&&(me?.role==='admin'||x.employeeId===me?.id)).sort((a,b)=>b.ts-a.ts||b.id-a.id);
+const relevantLogs=(d,who='all',cat='Registrar bitácora')=>logs.filter(x=>x.workDay===d&&(who==='all'||x.employeeId===Number(who))&&(cat==='all'||x.category===cat)&&(me?.role==='admin'||x.employeeId===me?.id)).sort((a,b)=>b.ts-a.ts||b.id-a.id);
 function logWeekHTML(){
  const start=new Date(logWeek+'T12:00:00Z');start.setUTCDate(start.getUTCDate()-((start.getUTCDay()+6)%7));
  const ds=Array.from({length:7},(_,i)=>{const d=new Date(start);d.setUTCDate(d.getUTCDate()+i);return d});
  const month=start.toLocaleDateString('es-SV',{month:'long',year:'numeric',timeZone:'UTC'});
  return '<div class="row"><b style="font-size:13px;color:#173d2c">'+esc(month[0].toUpperCase()+month.slice(1))+'</b><div><button class="arw" data-a="logprev" aria-label="Semana anterior">‹</button> <button class="arw" data-a="lognext" aria-label="Semana siguiente">›</button></div></div>'+
  '<div class="log-week">'+ds.map((d,i)=>{
-  const k=d.toISOString().slice(0,10),n=relevantLogs(k).length,held=logHoldDay===k;
-  return '<div class="atm-log-day-tile" data-atm-log-date="'+k+'"><button type="button" class="log-day '+(k===logDay?'active':'')+'" data-a="logdate" data-day="'+k+'" aria-label="'+esc(fmt(k))+'; mantené presionado para borrar todos los registros del día"><small>'+['L','M','M','J','V','S','D'][i]+'</small><b>'+d.getUTCDate()+'</b><i style="'+(n?'':'visibility:hidden')+'"></i></button>'+
+  const k=d.toISOString().slice(0,10),n=relevantLogs(k,logEmployee,logCategory).length,held=logHoldDay===k;
+  return '<div class="atm-log-day-tile" data-atm-log-date="'+k+'"><button type="button" class="log-day '+(k===logDay?'active':'')+'" data-a="logdate" data-day="'+k+'" aria-label="'+esc(fmt(k))+'; mantené presionado para borrar registros de esta vista"><small>'+['L','M','M','J','V','S','D'][i]+'</small><b>'+d.getUTCDate()+'</b><i style="'+(n?'':'visibility:hidden')+'"></i></button>'+
    (held&&n?'<button type="button" class="atm-log-day-trash" data-a="atm-log-day-trash" data-day="'+k+'" aria-label="Borrar registros del '+esc(fmt(k))+'">🗑</button>':'')+'</div>';
  }).join('')+'</div>';
 }
@@ -435,7 +440,7 @@ function logCard(l){
  const info=l.taskType==='booking'?'Vehículo agendado':'Tarea interna',pr=PRIORITIES[l.priority]||null;
  const chosen=logSelected.has(l.uuid),hasId=!!l.uuid;
  return '<div class="log-card atm-log-row'+(chosen?' selected':'')+'"><button type="button" class="atm-log-open" data-a="openlog" data-id="'+l.id+'">'+
-  '<span class="log-icon">📖</span><span class="log-copy"><span class="log-type '+(logKindClass[l.category]||'')+'">'+esc(logCategoryLabels[l.category]||l.category)+'</span>'+
+  '<span class="log-icon">'+(l.category==='Informar avance'?'📝':l.category==='Reportar problema'?'⚠':'📖')+'</span><span class="log-copy"><span class="log-type '+(logKindClass[l.category]||'')+'">'+esc(logCategoryLabels[l.category]||l.category)+'</span>'+
   '<strong>'+esc(l.vehicle)+'</strong><small>'+esc(l.text.length>135?l.text.slice(0,135)+'…':l.text)+'</small>'+
   '<small>'+esc(info)+(pr?' · '+esc(pr.name):'')+' · '+esc(logClock(l.ts))+'</small></span><span style="font-weight:850;color:#42735a">›</span></button>'+
  (hasId?(logSelectMode?
@@ -449,16 +454,27 @@ function logControlsHTML(entries){
  '<button type="button" class="atm-log-danger" data-a="atm-log-delete-selected" '+(!selected.length?'disabled':'')+'>🗑 Borrar seleccionadas ('+selected.length+')</button>'+
  '<button type="button" data-a="atm-log-cancel-select">Cancelar</button>':
  '<button type="button" data-a="atm-log-start-select" '+(!visible.length?'disabled':'')+'>☑ Seleccionar varias</button>')+'</div>'+
- '<div class="atm-log-action-hint">'+(logSelectMode?'Seleccionar todas incluye únicamente los registros visibles del día y filtros seleccionados.':'Mantené presionada una fecha del calendario para mostrar la papelera y borrar todos los registros de ese día.')+'</div>';
+ '<div class="atm-log-action-hint">'+(logSelectMode?'Seleccionar todas incluye únicamente los registros visibles del día y filtros seleccionados.':'Mantené presionada una fecha para borrar únicamente los registros de la vista y el técnico seleccionados.')+'</div>';
 }
-function logsHTML(){const own=me?.role!=='admin',entries=relevantLogs(logDay,logEmployee,logCategory),daily=relevantLogs(logDay,'all','all'),members=own?[me]:staff();
- return '<div class="page">'+heading(own?'Mis bitácoras':'Bitácoras','')+
+const reportKinds=[
+ {cat:'Registrar bitácora',title:'Bitácoras',own:'Mis bitácoras',label:'bitácoras',icon:'📖'},
+ {cat:'Informar avance',title:'Avances',own:'Mis avances',label:'avances',icon:'📝'},
+ {cat:'Reportar problema',title:'Problemas',own:'Mis problemas',label:'problemas',icon:'⚠'}
+];
+const reportMode=()=>reportKinds.find(x=>x.cat===logCategory)||reportKinds[0];
+function logsHTML(){
+ const own=me?.role!=='admin',mode=reportMode(),entries=relevantLogs(logDay,logEmployee,mode.cat),
+ daily=relevantLogs(logDay,'all',mode.cat),members=own?[me]:staff();
+ return '<div class="page">'+heading(own?mode.own:mode.title,'')+
+ '<div class="atm-report-tabs" role="group" aria-label="Tipo de registros">'+
+ reportKinds.map(x=>'<button type="button" data-a="logview" data-cat="'+esc(x.cat)+'" class="'+(mode.cat===x.cat?'active':'')+'" aria-pressed="'+(mode.cat===x.cat)+'">'+x.icon+' '+x.title+'</button>').join('')+'</div>'+
  logWeekHTML()+
- '<div class="row daily-heading"><b style="font-size:13px;color:#173d28">'+esc(fmt(logDay))+'</b><span class="pill">'+daily.length+' registros del día</span></div>'+
- '<div class="log-summary"><div class="log-stat"><b>'+daily.length+'</b><small>Registros del día</small></div><div class="log-stat"><b>'+new Set(daily.map(x=>x.employeeId)).size+'</b><small>Técnicos con registros</small></div></div>'+
- '<div class="log-toolbar">'+(!own?'<select id="logperson" aria-label="Filtrar técnico"><option value="all">Todos los técnicos</option>'+members.map(u=>'<option value="'+u.id+'" '+(String(logEmployee)===String(u.id)?'selected':'')+'>'+esc(u.name)+'</option>').join('')+'</select>':'')+
- '<select id="logcategory" aria-label="Tipo de registro"><option value="all">Todos los registros</option><option value="Registrar bitácora" '+(logCategory==='Registrar bitácora'?'selected':'')+'>Bitácoras</option><option value="Informar avance" '+(logCategory==='Informar avance'?'selected':'')+'>Avances</option><option value="Reportar problema" '+(logCategory==='Reportar problema'?'selected':'')+'>Problemas</option></select></div>'+logControlsHTML(entries)+
- (entries.length?'<div class="log-list">'+members.filter(u=>entries.some(l=>l.employeeId===u.id)).map(u=>{const mine=entries.filter(l=>l.employeeId===u.id);return '<div class="log-group"><div class="log-grouphead"><span class="avatar" style="width:30px;height:30px">'+esc(u.name[0])+'</span><strong>'+esc(u.name)+'</strong><span class="pill">'+mine.length+' registros</span></div>'+mine.map(logCard).join('')+'</div>'}).join('')+'</div>':'<div class="card" style="text-align:center;align-items:center;padding:22px 15px"><span style="font-size:27px">📖</span><b style="color:#16412e">Sin registros para esta selección</b></div>')+
+ '<div class="row daily-heading"><b style="font-size:13px;color:#173d28">'+esc(fmt(logDay))+'</b><span class="pill">'+daily.length+' '+mode.label+' del día</span></div>'+
+ '<div class="log-summary"><div class="log-stat"><b>'+daily.length+'</b><small>'+mode.title+' del día</small></div><div class="log-stat"><b>'+new Set(daily.map(x=>x.employeeId)).size+'</b><small>Técnicos con '+mode.label+'</small></div></div>'+
+ (!own?'<div class="log-toolbar"><select id="logperson" aria-label="Filtrar técnico"><option value="all">Todos los técnicos</option>'+members.map(u=>'<option value="'+u.id+'" '+(String(logEmployee)===String(u.id)?'selected':'')+'>'+esc(u.name)+'</option>').join('')+'</select></div>':'')+
+ logControlsHTML(entries)+
+ (entries.length?'<div class="log-list">'+members.filter(u=>entries.some(l=>l.employeeId===u.id)).map(u=>{const mine=entries.filter(l=>l.employeeId===u.id);return '<div class="log-group"><div class="log-grouphead"><span class="avatar" style="width:30px;height:30px">'+esc(u.name[0])+'</span><strong>'+esc(u.name)+'</strong><span class="pill">'+mine.length+' '+mode.label+'</span></div>'+mine.map(logCard).join('')+'</div>'}).join('')+'</div>':
+ '<div class="card" style="text-align:center;align-items:center;padding:22px 15px"><span style="font-size:27px">'+mode.icon+'</span><b style="color:#16412e">Sin '+mode.label+' para esta selección</b></div>')+
  '</div>';
 }
 
@@ -491,7 +507,7 @@ function calendarHTML(){
  calWeek(scope)+
  (manager?'<label class="field">Mostrar calendario de<select id="filter"><option value="all">Todos los empleados</option>'+(me.role==='admin'?'<option value="none" '+(filter==='none'?'selected':'')+'>—</option>':'')+staff().map(u=>'<option value="'+u.id+'" '+(String(filter)===String(u.id)?'selected':'')+'>'+esc(u.name)+'</option>').join('')+'</select></label>':'')+
  '<div class="row calendar-day-summary"><b style="font-size:13px">'+esc(fmt(day))+'</b><div class="cal-totals"><span class="pill appointments-count">🚘 '+countBookings+' agendados</span><span class="pill">'+countTasks+' tareas</span></div></div>'+
- (me.role==='admin'?'<button class="log-shortcut" data-a="logsdate">📖 Ver bitácoras de este día <b>'+relevantLogs(day).length+' registros ›</b></button>':'')+
+ (me.role==='admin'?'<div class="atm-report-shortcuts"><button class="log-shortcut" data-a="logsdate">📖 Bitácoras de este día <b>'+relevantLogs(day,'all','Registrar bitácora').length+' ›</b></button><button class="log-shortcut" data-a="progressdate">📝 Avances de este día <b>'+relevantLogs(day,'all','Informar avance').length+' ›</b></button></div>':'')+
  (scope==='all'?pendingPanel(day,me.role==='admin'):'')+groups.map(jobsGroup).join('')+
  (me.role==='admin'?'':'')+
  '</div>';
@@ -506,7 +522,7 @@ function tasksHTML(){
  '<div class="section-title" style="margin-top:7px">RECEPCIÓN</div><button class="item pending-access" data-a="pending"><span class="avatar" style="background:#faecca;color:#79530e">◷</span><span class="details"><strong>Pendientes de asignar</strong><small class="pending-vehicle-preview">'+pendingVehicleSummary()+'</small></span>›</button></div>';
  if(employee==='pending')return '<div class="page"><button class="btn ghost" data-a="backemployee">‹ Volver a técnicos</button>'+heading('Pendientes de asignar','')+calWeek('pending')+'<div class="row"><b style="font-size:13px">'+esc(fmt(day))+'</b><span class="pill">'+pendingBookings(day).length+' pendientes</span></div>'+(pendingPanel(day,true)||'<div class="card sub">No hay vehículos pendientes en esta fecha.</div>')+'</div>';
  const u=user(employee),work=schedule(employee,day);
- return '<div class="page"><button class="btn ghost" data-a="backemployee">‹ Volver a técnicos</button>'+heading(u.name,'ORDEN DE ATENCIÓN')+'<button class="btn atm-task-add-cta" data-a="newjob">＋ Agregar actividad</button>'+calWeek(employee)+'<div class="row"><b style="font-size:13px">'+esc(fmt(day))+'</b><span class="pill">'+work.length+' actividades</span></div><div class="work-queue">'+(work.length?work.map((item,i)=>workHTML(item,i,true,true)).join(''):'<div class="card sub">Todavía no hay trabajos asignados en este día.</div>')+'</div></div>';
+ return '<div class="page"><button class="btn ghost" data-a="backemployee">‹ Volver a técnicos</button>'+heading(u.name,'ORDEN DE ATENCIÓN')+'<button class="btn atm-task-add-cta" data-a="newjob">＋ Agregar actividad</button>'+calWeek(employee)+'<div class="row"><b style="font-size:13px">'+esc(fmt(day))+'</b><button type="button" class="atm-task-log-button" data-a="employee-logs">📖 Bitácora</button></div><div class="row"><span class="pill">'+work.length+' actividades</span></div><div class="work-queue">'+(work.length?work.map((item,i)=>workHTML(item,i,true,true)).join(''):'<div class="card sub">Todavía no hay trabajos asignados en este día.</div>')+'</div></div>';
 }
 
 function inboxHTML(){return '<div class="page">'+'<div class="row">'+heading('Avisos y mensajes','')+'<button class="btn ghost" data-a="allmenu" aria-label="Opciones de avisos">⋮</button></div><div class="stack">'+staff().map(u=>{const m=convo(u.id).slice(-1)[0],n=unreadCount(u.id);return '<button class="item chat-list-button" data-a="openchat" data-id="'+u.id+'"><span class="chat-name-chip">'+esc(u.name)+'</span><span class="details"><small class="chat-preview">'+esc(m?.text||'Sin avisos todavía')+'</small></span>'+(n?'<span class="unread-number">'+n+'</span>':'')+'<span class="chat-chevron">›</span></button>'}).join('')+'</div></div>'}
@@ -789,23 +805,23 @@ else if(dialog.type==='vehicles'){
 else if(dialog.type==='logdelete'){
  const d=dialog,count=Number(d.preview?.count||0);
  h='<div class="row"><h3>Borrar registros</h3><button type="button" class="btn ghost" data-a="close">×</button></div>'+
- '<div class="atm-cleanup-warning"><strong>'+(d.mode==='day'?'Eliminar registros del '+esc(fmt(d.day)):'Eliminar registros seleccionados')+'</strong><p style="margin:6px 0 0">Es definitivo: estos registros y sus mensajes asociados se eliminarán también de Supabase y del chat. Los vehículos, tareas y otras fechas no se borrarán.</p></div>'+
+ '<div class="atm-cleanup-warning"><strong>'+(d.mode==='day'?'Eliminar registros del '+esc(fmt(d.day)):'Eliminar '+esc(d.label||'registros seleccionados'))+'</strong><p style="margin:6px 0 0">Es definitivo: estos registros y sus mensajes asociados se eliminarán también de Supabase y del chat. Los vehículos, tareas y otras fechas no se borrarán.</p></div>'+
  (d.loading?'<p class="sub">Consultando Supabase…</p>':
  d.error?'<div class="alert">'+esc(d.error)+'</div><button type="button" class="btn ghost" data-a="atm-log-retry">Volver a consultar</button>':
- '<div class="atm-cleanup-preview"><strong>'+count+' registro'+(count===1?'':'s')+' encontrado'+(count===1?'':'s')+'</strong><div class="sub">'+(d.mode==='day'?'Sin importar los filtros de pantalla, según tus permisos.':'Seleccionados en la pantalla de bitácoras.')+'</div></div>'+
+ '<div class="atm-cleanup-preview"><strong>'+count+' registro'+(count===1?'':'s')+' encontrado'+(count===1?'':'s')+'</strong><div class="sub">'+(d.mode==='day'?'Sin importar los filtros de pantalla, según tus permisos.':'Únicamente de la categoría y el técnico seleccionados.')+'</div></div>'+
  (count?'<label class="atm-log-delete-check"><input type="checkbox" id="atm-log-ack"> Comprendo que la eliminación es definitiva.</label><button type="button" class="btn red" data-a="atm-log-confirm-delete" disabled>🗑 Eliminar '+count+' registro'+(count===1?'':'s')+'</button>':'<p class="sub">Esta selección ya no contiene registros.</p>'))+
  '<button type="button" class="btn ghost" data-a="close">Cancelar</button>';
 }
 else if(dialog.type==='logdetail'){
  const l=logs.find(x=>x.id===dialog.id),owner=l?user(l.employeeId):null,pr=l?(PRIORITIES[l.priority]||null):null;
- h=l?'<div class="row"><div><div class="overline">REGISTRO DEL '+esc(fmt(l.workDay).toUpperCase())+'</div><h3>Detalle de bitácora</h3></div><span style="font-size:25px">📖</span></div>'+
+ h=l?'<div class="row"><div><div class="overline">REGISTRO DEL '+esc(fmt(l.workDay).toUpperCase())+'</div><h3>Detalle de '+esc(l.category==='Informar avance'?'avance':l.category==='Reportar problema'?'problema':'bitácora')+'</h3></div><span style="font-size:25px">📖</span></div>'+
  '<div class="log-detail-content"><div class="row"><b style="font-size:13px;color:#153b29">'+esc(l.vehicle)+'</b><span class="log-type '+(logKindClass[l.category]||'')+'">'+esc(logCategoryLabels[l.category]||l.category)+'</span></div>'+
  '<div class="sub"><b>Técnico:</b> '+esc(owner?.name||'Cuenta anterior')+'</div><div class="sub"><b>Actividad:</b> '+esc(l.taskType==='booking'?'Vehículo agendado':'Tarea interna')+(pr?' · '+esc(pr.name):'')+'</div>'+
  '<div class="sub"><b>Indicaciones:</b> '+esc(l.taskDetail||'Sin indicaciones adicionales')+'</div><div class="sub"><b>Fecha de trabajo:</b> '+esc(fmt(l.workDay))+'</div><div class="sub"><b>Enviado:</b> '+esc(new Date(l.ts).toLocaleString('es-SV',{timeZone:'America/El_Salvador',dateStyle:'medium',timeStyle:'short'}))+'</div></div>'+
  '<div class="log-detail-content"><strong style="font-size:12px;color:#12422c">Registro escrito</strong><p>'+esc(l.text)+'</p></div><button class="btn" data-a="close">Cerrar registro</button>':'<div class="card sub">Registro no disponible</div>'+footer;
 }
 else if(dialog.type==='chatmenu'||dialog.type==='allmenu'){sheet=true;h='<h3>Opciones de chat</h3>'+(dialog.type==='chatmenu'?'<button class="opt" data-a="viewlogs"><span class="ico">📖</span><span class="grow"><strong>Ver bitácoras</strong><small>Registros técnicos enviados</small></span>›</button><button class="opt" data-a="clearask"><span class="ico">🗑</span><span class="grow"><strong>Vaciar chat</strong><small>Ocultar mensajes de tu cuenta</small></span>›</button>':'<button class="opt" data-a="clearallask"><span class="ico">🗑</span><span class="grow"><strong>Vaciar todos mis chats</strong><small>Solo en esta cuenta</small></span>›</button>')+footer}
-else if(dialog.type==='logs'){const id=me.role==='admin'?thread:me.id;const arr=logs.filter(x=>x.employeeId===id).sort((a,b)=>b.ts-a.ts);h='<h3>Bitácoras</h3>'+(arr.length?arr.map(logCard).join(''):'<div class="card sub">No hay registros enviados.</div>')+footer}
+else if(dialog.type==='logs'){const id=me.role==='admin'?thread:me.id;const arr=logs.filter(x=>x.employeeId===id&&x.category==='Registrar bitácora').sort((a,b)=>b.ts-a.ts);h='<h3>Bitácoras</h3>'+(arr.length?arr.map(logCard).join(''):'<div class="card sub">No hay registros enviados.</div>')+footer}
 else if(dialog.type==='clearask'||dialog.type==='clearallask'){h='<h3>¿Vaciar historial?</h3><div class="row">'+footer+'<button class="btn red" data-a="clearconfirm">Sí, vaciar</button></div>'}
 else if(dialog.type==='transfer'){const n=totalDay(dialog.src,dialog.scope);h='<h3>'+(dialog.origin==='tasks'?'Copiar o mover día':'Copiar programación')+'</h3><p class="sub">'+n+' tareas de '+esc(fmt(dialog.src))+' hacia '+esc(fmt(dialog.dest))+'. '+(dialog.scope==='all'?'Todos los técnicos.':'Solo '+esc(user(dialog.scope)?.name||'el técnico')+'.')+'</p><div class="stack">'+(dialog.origin==='tasks'?'<div class="row"><button class="btn ghost" data-a="copy">Copiar</button><button class="btn" data-a="move">Mover</button></div>':'<button class="btn" data-a="copy">Confirmar copia</button>')+footer+'</div>'}
 else if(dialog.type==='deleteDay'||dialog.type==='deleteJob'){h='<h3>¿Eliminar programación?</h3><p class="sub">'+(dialog.type==='deleteDay'?'Eliminar '+totalDay(dialog.src,dialog.scope)+' actividades del '+esc(fmt(dialog.src))+'.':'Eliminar la tarea seleccionada.')+'</p><div class="row">'+footer+'<button class="btn red" data-a="deleteconfirm">Eliminar</button></div>'}
@@ -815,7 +831,7 @@ let historyGroup=Number(history.state?.atmHistoryGroup)||0,highlightNotice=null,
 // Only genuine screen and modal transitions create browser history entries.
 function navRoute(){return JSON.stringify([tab,employee,thread,dialog?.type||null,dialog?.id??dialog?.taskId??null]);}
 function snapshotState(){return {atmManager:true,atmHistoryGroup:historyGroup,meId:me?.id||null,tab,employee,thread,day,week,filter,logDay,logWeek,logEmployee,logCategory,monthCursor,ctx,dialog:['created','logdelete'].includes(dialog?.type)?null:dialog,draft};}
-function restoreState(s){atmClockDismiss();if(!me)return;tab=s?.tab||'calendar';employee=s?.employee??null;thread=s?.thread??null;day=s?.day||today;week=s?.week||day;filter=s?.filter||'all';logDay=s?.logDay||day;logWeek=s?.logWeek||logDay;logEmployee=s?.logEmployee||'all';logCategory=s?.logCategory||'all';monthCursor=s?.monthCursor||day.slice(0,7)+'-01';ctx=s?.ctx||null;dialog=s?.dialog||null;draft=s?.draft||'';error='';render();}
+function restoreState(s){atmClockDismiss();if(!me)return;tab=s?.tab||'calendar';employee=s?.employee??null;thread=s?.thread??null;day=s?.day||today;week=s?.week||day;filter=s?.filter||'all';logDay=s?.logDay||day;logWeek=s?.logWeek||logDay;logEmployee=s?.logEmployee||'all';logCategory=reportKinds.some(x=>x.cat===s?.logCategory)?s.logCategory:'Registrar bitácora';monthCursor=s?.monthCursor||day.slice(0,7)+'-01';ctx=s?.ctx||null;dialog=s?.dialog||null;draft=s?.draft||'';error='';render();}
 function syncHistory(replace=false){
  const st=snapshotState(),json=JSON.stringify(st),route=navRoute();
  if(suppressHistory||json===lastHistoryJSON)return;
@@ -959,7 +975,7 @@ function pointerEnd(e,success){
 }
 
 window.addEventListener('pointerup',e=>pointerEnd(e,true));window.addEventListener('pointercancel',e=>pointerEnd(e,false));
-root.addEventListener('input',e=>{if(e.target.id==='draft')draft=e.target.value});root.addEventListener('change',e=>{if(e.target.id==='filter'){filter=e.target.value;render()}else if(e.target.id==='logperson'&&me?.role==='admin'){logSelected.clear();logHoldDay=null;logEmployee=e.target.value;render()}else if(e.target.id==='logcategory'){logSelected.clear();logHoldDay=null;logCategory=e.target.value;render()}else if(e.target.id==='allowReply'){adminAllowReply=e.target.checked}else if(e.target.id==='serviceType'){const other=overlay.querySelector('#serviceOtherWrap');if(other)other.style.display=e.target.value==='Otro'?'flex':'none'}});
+root.addEventListener('input',e=>{if(e.target.id==='draft')draft=e.target.value});root.addEventListener('change',e=>{if(e.target.id==='filter'){filter=e.target.value;render()}else if(e.target.id==='logperson'&&me?.role==='admin'){logSelected.clear();logHoldDay=null;logEmployee=e.target.value;render()}else if(e.target.id==='allowReply'){adminAllowReply=e.target.checked}else if(e.target.id==='serviceType'){const other=overlay.querySelector('#serviceOtherWrap');if(other)other.style.display=e.target.value==='Otro'?'flex':'none'}});
 
 root.addEventListener('click',e=>{
  const b=e.target.closest('[data-a="atm-cleanup-open"]');
@@ -1140,7 +1156,7 @@ function atmLogCurrentVisible(){
 }
 function atmLogCancelLongPress(){if(logHoldTimer){clearTimeout(logHoldTimer);logHoldTimer=null}}
 function atmLogShowDayTrash(date){
- if(!me||tab!=='logs'||!relevantLogs(date).length)return;
+ if(!me||tab!=='logs'||!relevantLogs(date,logEmployee,logCategory).some(x=>x.uuid))return;
  atmLogCancelLongPress();
  logHoldDay=date;logDay=date;logWeek=date;logIgnoreDayClickUntil=Date.now()+1100;
  logSelected.clear();
@@ -1151,7 +1167,7 @@ root.addEventListener('pointerdown',e=>{
  const dateButton=e.target.closest('.atm-log-day-tile .log-day');
  if(!dateButton)return;
  const date=dateButton.dataset.day;
- if(!relevantLogs(date).length)return;
+ if(!relevantLogs(date,logEmployee,logCategory).some(x=>x.uuid))return;
  atmLogCancelLongPress();
  const pointX=e.clientX,pointY=e.clientY;
  logHoldTimer=setTimeout(()=>{
@@ -1173,12 +1189,12 @@ root.addEventListener('contextmenu',e=>{
   e.preventDefault();e.stopPropagation();atmLogShowDayTrash(button.dataset.day);
  }
 },true);
-async function atmLogAskDelete(mode,ids=[],date=null){
+async function atmLogAskDelete(mode,ids=[],date=null,label=''){
  if(!me||!cloud.sb||!['day','ids'].includes(mode))return;
  const requestIds=mode==='ids'?[...new Set(ids)]:[];
  if(mode==='ids'&&!requestIds.length)return;
  const page={type:'logdelete',mode,ids:requestIds,day:mode==='day'?date:null,
-   preview:null,error:'',loading:true};
+   preview:null,error:'',loading:true,label};
  showDialog(page);
  await atmLogGetPreview(page);
 }
@@ -1258,7 +1274,7 @@ root.addEventListener('click',e=>{
    'atm-log-select-one','atm-log-select-all','atm-log-delete-selected','atm-log-delete-one',
    'atm-log-retry','atm-log-confirm-delete']);
  if(!actions.has(action)){
-  if(['logdate','logprev','lognext','openlogs','logsdate'].includes(action)){logSelected.clear();logHoldDay=null}
+  if(['logdate','logprev','lognext','openlogs','logsdate','progressdate','employee-logs','logview'].includes(action)){logSelected.clear();logHoldDay=null}
   return;
  }
  e.preventDefault();e.stopImmediatePropagation();
@@ -1268,7 +1284,10 @@ root.addEventListener('click',e=>{
   return;
  }
  if(action==='atm-log-day-trash'){
-  if(btn.dataset.day===logHoldDay&&relevantLogs(logHoldDay).length)atmLogAskDelete('day',[],logHoldDay);
+  if(btn.dataset.day===logHoldDay){
+    const selected=relevantLogs(logHoldDay,logEmployee,logCategory).filter(x=>x.uuid);
+    if(selected.length)atmLogAskDelete('ids',selected.map(x=>x.uuid),null,reportMode().label+' del '+fmt(logHoldDay)+(logEmployee==='all'?'':' · '+(user(logEmployee)?.name||'técnico')));
+   }
   return;
  }
  if(!me||(tab!=='logs'&&!(dialog?.type==='logs'&&action==='atm-log-delete-one')))return;
@@ -1299,7 +1318,7 @@ root.addEventListener('click',e=>{
  }
 },true);
 
-root.addEventListener('click',e=>{if(Date.now()<blockedClick&&(e.target.closest('[data-a="date"]')||e.target.closest('[data-a="editjob"]')))return;const navbtn=e.target.closest('[data-tab]');if(navbtn){if(navbtn.dataset.tab==='calendar'&&tab==='calendar'&&unreadCalendar().length){atmAcknowledgeCalendarBadge();return;}tab=navbtn.dataset.tab;employee=null;thread=null;ctx=null;draft='';closeDialog();render();return}const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a;if(a==='atm-open-calendar-change'){viewCalendarChange(b.dataset.id);return}if(a==='close'){closeDialog();return}if(a==='atm-account-menu'){if(me)showDialog({type:'accountmenu'});return}if(a==='backcalendar'){tab='calendar';thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='logout'){logout();return}if(a==='openusers'){tab='users';employee=null;thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='openlogs'){logDay=(tab==='calendar'?day:logDay);logWeek=logDay;logEmployee='all';logCategory='all';tab='logs';thread=null;employee=null;ctx=null;draft='';closeDialog();render();return}if(a==='logsdate'){logDay=day;logWeek=day;logEmployee='all';logCategory='all';tab='logs';closeDialog();render();return}if(a==='logprev'||a==='lognext'){logDay=dayAdd(logDay,a==='logprev'?-7:7);logWeek=logDay;render();return}if(a==='logdate'){logDay=b.dataset.day;logWeek=logDay;render();return}if(a==='openlog'){const entry=logs.find(x=>x.id===Number(b.dataset.id));if(entry&&(me.role==='admin'||entry.employeeId===me.id))showDialog({type:'logdetail',id:entry.id});return}if(a==='newuser'){showDialog({type:'newuser'});return}if(a==='edituser'){showDialog({type:'edituser',id:Number(b.dataset.id)});return}if(a==='showmonth'&&me?.role==='admin'&&tab==='calendar'){monthCursor=day.slice(0,7)+'-01';showDialog({type:'monthpicker'});return}if(a==='monthprev'||a==='monthnext'){const mm=new Date(monthCursor+'T12:00:00Z');mm.setUTCMonth(mm.getUTCMonth()+(a==='monthprev'?-1:1));monthCursor=mm.toISOString().slice(0,7)+'-01';showDialog({type:'monthpicker'});return}if(a==='monthdate'){day=b.dataset.day;week=day;closeDialog();render();return}if(a==='newbooking'){showDialog({type:'newbooking'});return}if(a==='editbooking'){const ap=appointments.find(x=>x.id===Number(b.dataset.booking));if(ap){day=ap.day;week=ap.day;showDialog({type:'editbooking',id:ap.id})}return}if(a==='askdeletebooking'){showDialog({type:'deleteBooking',id:dialog.id});return}if(a==='confirmdeletebooking'){const prev=appointments.find(x=>x.id===dialog.id);appointments=appointments.filter(x=>x.id!==dialog.id);if(prev)renumber(prev.userId,prev.day);closeDialog();render();notify('Agendamiento eliminado');return}if(a==='newjob'){showDialog({type:'newjob'});return}if(a==='editjob'){showDialog({type:'editjob',id:Number(b.dataset.job)});return}if(a==='prev'||a==='next'){day=dayAdd(day,a==='prev'?-7:7);week=day;render();return}if(a==='date'){day=b.dataset.day;week=day;render();return}if(a==='employee'){employee=Number(b.dataset.id);render();return}if(a==='pending'){employee='pending';filter='all';render();return}if(a==='backemployee'){employee=null;render();return}if(a==='openchat'){thread=Number(b.dataset.id);ctx=null;draft='';adminAllowReply=false;render();return}if(a==='gotonotices'){tab='chat';thread=null;ctx=null;draft='';render();return}if(a==='replyinstruction'){const m=messages.find(x=>x.id===Number(b.dataset.id));if(canReplyTo(m)){ctx={category:'Respuesta a instrucción',replyTo:m.id,vehicle:m.vehicle||null,taskType:m.taskType||null,taskId:m.taskId||null};draft='';render();setTimeout(()=>main.querySelector('#draft')?.focus(),0)}return}if(a==='notebooking'||a==='notejob'){if(me?.role!=='admin')return;showDialog({type:'adminnote',taskType:a==='notebooking'?'booking':'job',taskId:Number(b.dataset.id)});return}if(a==='backchat'){thread=null;render();return}if(a==='plus'){showDialog({type:'categories'});return}if(a==='category'){category(b.dataset.cat);return}if(a==='backcategories'){showDialog({type:'categories'});return}if(a==='selectbooking'){const ap=appointments.find(x=>x.id===Number(b.dataset.booking)&&x.userId===me.id);if(ap){ctx={category:dialog.category,vehicle:ap.vehicle,jobId:'a'+ap.id,bookingId:ap.id,taskType:'booking',taskId:ap.id,taskDetail:ap.instructions,workDay:ap.day,priority:ap.priority};draft=dialog.category==='Registrar bitácora'?drafts[me.id+':'+ctx.jobId]||'':'';closeDialog();render()}return}if(a==='selectcar'){const j=jobs.find(x=>x.id===Number(b.dataset.job)&&x.userId===me.id);if(j){ctx={category:dialog.category,vehicle:j.title,jobId:j.id,taskType:'job',taskId:j.id,taskDetail:j.detail,workDay:j.day,priority:null};draft=dialog.category==='Registrar bitácora'?drafts[me.id+':'+j.id]||'':'';closeDialog();render()}return}if(a==='clearctx'){ctx=null;draft='';render();return}if(a==='savedraft'){if(ctx?.jobId)drafts[me.id+':'+ctx.jobId]=draft;ctx=null;draft='';render();notify('Bitácora guardada como borrador');return}if(a==='chatmenu'||a==='allmenu'){showDialog({type:a});return}if(a==='viewlogs'){showDialog({type:'logs'});return}if(a==='clearask'||a==='clearallask'){showDialog({type:a});return}if(a==='clearconfirm'){clearChats();return}if(a==='copy'||a==='move'){transfer(a==='move');return}if(a==='deleteconfirm'){removeStuff();return}});
+root.addEventListener('click',e=>{if(Date.now()<blockedClick&&(e.target.closest('[data-a="date"]')||e.target.closest('[data-a="editjob"]')))return;const navbtn=e.target.closest('[data-tab]');if(navbtn){if(navbtn.dataset.tab==='calendar'&&tab==='calendar'&&unreadCalendar().length){atmAcknowledgeCalendarBadge();return;}tab=navbtn.dataset.tab;employee=null;thread=null;ctx=null;draft='';closeDialog();render();return}const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a;if(a==='atm-open-calendar-change'){viewCalendarChange(b.dataset.id);return}if(a==='close'){closeDialog();return}if(a==='atm-account-menu'){if(me)showDialog({type:'accountmenu'});return}if(a==='backcalendar'){tab='calendar';thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='logout'){logout();return}if(a==='openusers'){tab='users';employee=null;thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='openlogs'){logDay=(tab==='calendar'?day:logDay);logWeek=logDay;logEmployee='all';logCategory='Registrar bitácora';tab='logs';thread=null;employee=null;ctx=null;draft='';closeDialog();render();return}if(a==='logsdate'){logDay=day;logWeek=day;logEmployee='all';logCategory='Registrar bitácora';tab='logs';closeDialog();render();return}if(a==='progressdate'&&me?.role==='admin'){logDay=day;logWeek=day;logEmployee='all';logCategory='Informar avance';tab='logs';closeDialog();render();return}if(a==='employee-logs'&&me?.role==='admin'&&typeof employee==='number'){logDay=day;logWeek=day;logEmployee=String(employee);logCategory='Registrar bitácora';tab='logs';employee=null;closeDialog();render();return}if(a==='logview'&&reportKinds.some(x=>x.cat===b.dataset.cat)){logCategory=b.dataset.cat;logSelected.clear();logSelectMode=false;logHoldDay=null;render();return}if(a==='logprev'||a==='lognext'){logDay=dayAdd(logDay,a==='logprev'?-7:7);logWeek=logDay;render();return}if(a==='logdate'){logDay=b.dataset.day;logWeek=logDay;render();return}if(a==='openlog'){const entry=logs.find(x=>x.id===Number(b.dataset.id));if(entry&&(me.role==='admin'||entry.employeeId===me.id))showDialog({type:'logdetail',id:entry.id});return}if(a==='newuser'){showDialog({type:'newuser'});return}if(a==='edituser'){showDialog({type:'edituser',id:Number(b.dataset.id)});return}if(a==='showmonth'&&me?.role==='admin'&&tab==='calendar'){monthCursor=day.slice(0,7)+'-01';showDialog({type:'monthpicker'});return}if(a==='monthprev'||a==='monthnext'){const mm=new Date(monthCursor+'T12:00:00Z');mm.setUTCMonth(mm.getUTCMonth()+(a==='monthprev'?-1:1));monthCursor=mm.toISOString().slice(0,7)+'-01';showDialog({type:'monthpicker'});return}if(a==='monthdate'){day=b.dataset.day;week=day;closeDialog();render();return}if(a==='newbooking'){showDialog({type:'newbooking'});return}if(a==='editbooking'){const ap=appointments.find(x=>x.id===Number(b.dataset.booking));if(ap){day=ap.day;week=ap.day;showDialog({type:'editbooking',id:ap.id})}return}if(a==='askdeletebooking'){showDialog({type:'deleteBooking',id:dialog.id});return}if(a==='confirmdeletebooking'){const prev=appointments.find(x=>x.id===dialog.id);appointments=appointments.filter(x=>x.id!==dialog.id);if(prev)renumber(prev.userId,prev.day);closeDialog();render();notify('Agendamiento eliminado');return}if(a==='newjob'){showDialog({type:'newjob'});return}if(a==='editjob'){showDialog({type:'editjob',id:Number(b.dataset.job)});return}if(a==='prev'||a==='next'){day=dayAdd(day,a==='prev'?-7:7);week=day;render();return}if(a==='date'){day=b.dataset.day;week=day;render();return}if(a==='employee'){employee=Number(b.dataset.id);render();return}if(a==='pending'){employee='pending';filter='all';render();return}if(a==='backemployee'){employee=null;render();return}if(a==='openchat'){thread=Number(b.dataset.id);ctx=null;draft='';adminAllowReply=false;render();return}if(a==='gotonotices'){tab='chat';thread=null;ctx=null;draft='';render();return}if(a==='replyinstruction'){const m=messages.find(x=>x.id===Number(b.dataset.id));if(canReplyTo(m)){ctx={category:'Respuesta a instrucción',replyTo:m.id,vehicle:m.vehicle||null,taskType:m.taskType||null,taskId:m.taskId||null};draft='';render();setTimeout(()=>main.querySelector('#draft')?.focus(),0)}return}if(a==='notebooking'||a==='notejob'){if(me?.role!=='admin')return;showDialog({type:'adminnote',taskType:a==='notebooking'?'booking':'job',taskId:Number(b.dataset.id)});return}if(a==='backchat'){thread=null;render();return}if(a==='plus'){showDialog({type:'categories'});return}if(a==='category'){category(b.dataset.cat);return}if(a==='backcategories'){showDialog({type:'categories'});return}if(a==='selectbooking'){const ap=appointments.find(x=>x.id===Number(b.dataset.booking)&&x.userId===me.id);if(ap){ctx={category:dialog.category,vehicle:ap.vehicle,jobId:'a'+ap.id,bookingId:ap.id,taskType:'booking',taskId:ap.id,taskDetail:ap.instructions,workDay:ap.day,priority:ap.priority};draft=dialog.category==='Registrar bitácora'?drafts[me.id+':'+ctx.jobId]||'':'';closeDialog();render()}return}if(a==='selectcar'){const j=jobs.find(x=>x.id===Number(b.dataset.job)&&x.userId===me.id);if(j){ctx={category:dialog.category,vehicle:j.title,jobId:j.id,taskType:'job',taskId:j.id,taskDetail:j.detail,workDay:j.day,priority:null};draft=dialog.category==='Registrar bitácora'?drafts[me.id+':'+j.id]||'':'';closeDialog();render()}return}if(a==='clearctx'){ctx=null;draft='';render();return}if(a==='savedraft'){if(ctx?.jobId)drafts[me.id+':'+ctx.jobId]=draft;ctx=null;draft='';render();notify('Bitácora guardada como borrador');return}if(a==='chatmenu'||a==='allmenu'){showDialog({type:a});return}if(a==='viewlogs'){showDialog({type:'logs'});return}if(a==='clearask'||a==='clearallask'){showDialog({type:a});return}if(a==='clearconfirm'){clearChats();return}if(a==='copy'||a==='move'){transfer(a==='move');return}if(a==='deleteconfirm'){removeStuff();return}});
 root.addEventListener('submit',e=>{e.preventDefault();const f=e.target;if(f.id==='login'){const d=new FormData(f);doLogin(d.get('username'),d.get('password'));return}if(f.id==='userform'){const d=new FormData(f),name=String(d.get('name')||'').trim(),username=String(d.get('username')||'').trim(),password=String(d.get('password')||''),old=user(dialog.id),dupe=users.some(u=>u.username.toLowerCase()===username.toLowerCase()&&u.id!==old?.id);const err=overlay.querySelector('#usererror');if(!name||!/^[a-z0-9._-]+$/i.test(username)||dupe||(!old&&password.length<6)||(old&&password&&password.length<6)){err.style.display='block';err.textContent='Verificá los datos: usuario único sin espacios y contraseña mínima de 6 caracteres.';return}if(old){old.name=name;old.username=username;if(password)old.password=password;old.role=d.get('role');old.active=d.get('active')==='true';closeDialog();render();notify('Cuenta actualizada')}else{users.push({id:nextUser++,name,username,password,role:d.get('role'),active:true});saveDemo();showDialog({type:'created',username,password})}return}if(f.id==='notetaskform'){if(me?.role!=='admin')return;const d=new FormData(f);sendTaskNote(dialog.taskType,dialog.taskId,String(d.get('text')||''),d.get('allowReply')==='on');return}if(f.id==='bookingform'){
  if(me?.role!=='admin')return;
  const form=new FormData(f),vehicle=String(form.get('vehicle')||'').trim(),instructions=String(form.get('instructions')||'').trim(),assignedRaw=String(form.get('assigned')||''),assigned=assignedRaw===''?null:Number(assignedRaw),priority=String(form.get('priority')||''),serviceType=String(form.get('serviceType')||'Por definir'),serviceOther=String(form.get('serviceOther')||'').trim(),receptionStart=String(form.get('receptionStart')||'').trim(),receptionEnd=String(form.get('receptionEnd')||'').trim();
