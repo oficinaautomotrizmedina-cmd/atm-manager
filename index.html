@@ -8,6 +8,10 @@
 #app .atm-week-swipe{display:flex;flex-direction:column;gap:10px;touch-action:pan-y;min-width:0}
 #app .atm-week-swipe .week{touch-action:pan-y}
 #app .atm-week-swipe .day{touch-action:pan-y}
+#app .atm-week-viewport{width:100%;overflow:hidden;touch-action:pan-y;border-radius:10px;overscroll-behavior-x:contain}
+#app .atm-week-track{display:flex;width:300%;transform:translate3d(-33.333333%,0,0);will-change:transform;touch-action:pan-y}
+#app .atm-week-track>.week{flex:0 0 33.333333%;min-width:0;width:33.333333%;touch-action:pan-y}
+@media(prefers-reduced-motion:reduce){#app .atm-week-track{will-change:auto}}
 .day{border:1px solid #cfe1d4;background:white;color:#244b36;border-radius:10px;padding:9px 0;min-width:0;display:flex;align-items:center;flex-direction:column;gap:5px;touch-action:none;user-select:none}.day small{font-size:10px}.day b{font-size:16px}.day.active{background:#0b7357;border-color:#0b7357;color:white}.day.hit{border:2px solid #11a16f;background:#b8ecd0;color:#104c35}.arw{width:36px;height:35px;border:1px solid #cce0d0;color:#096a51;background:white;border-radius:9px;font-size:23px}.arw.hit{background:#087d5e;color:white}.group{display:flex;flex-direction:column;gap:8px}.numb{background:#e1f0e4;color:#136c50;font-size:12px;font-weight:800;border-radius:8px;width:28px;height:28px;display:grid;place-items:center;flex-shrink:0}.task{touch-action:none;user-select:none}.task.hit{border:2px solid #159b70;background:#d0f3df}.chatframe{height:100%;display:flex;flex-direction:column;background:#e7f0e8}.chathead{background:#0e604d;color:white;display:flex;gap:10px;align-items:center;padding:10px 12px}.chathead strong{font-size:14px}.chathead small{display:block;font-size:10px;color:#e2eee6;margin-top:3px}.chathead button{color:white;background:transparent;border:0;font-size:21px;padding:3px 6px}.messages{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:9px;padding:13px;background-image:radial-gradient(#ccdbcf77 .8px,transparent .8px);background-size:20px 20px}.bubble{max-width:88%;padding:10px 11px 7px;background:white;align-self:flex-start;border-radius:3px 11px 11px 11px;box-shadow:0 1px 3px #00000010;font-size:13px;color:#18382a;white-space:pre-wrap;overflow-wrap:anywhere}.bubble.mine{align-self:flex-end;background:#d0f0de;border-radius:11px 3px 11px 11px}.bubble .cat{font-size:10px;color:#17604a;background:#e3f1e8;padding:4px 7px;border-radius:5px;font-weight:800;display:inline-block;margin-bottom:6px}.bubble .small{font-size:10px;color:#40644c;display:block;margin-bottom:6px;font-weight:700}.bubble .time{text-align:right;font-size:10px;color:#617d66;margin-top:6px}.composer{display:flex;align-items:flex-end;gap:7px;background:#edf5ee;padding:10px}.composer textarea{flex:1;min-width:0;resize:none;max-height:100px;min-height:43px;outline:0;border:1px solid #c1d9c7;color:#123925;border-radius:19px;padding:11px;background:white;font-size:13px}.round{width:43px;height:43px;border-radius:50%;border:1px solid #b8d8c4;background:white;color:#087556;font-size:27px;display:grid;place-items:center;flex-shrink:0}.round.send{border:0;background:#07815e;color:white;font-size:21px}.tagcontext{background:#d8ecde;padding:9px;font-size:11px;font-weight:700;color:#21593d;border-left:3px solid #0b855f}.contextwrap{display:flex;gap:8px;align-items:center;background:#edf5ee;padding:7px 10px 0}.contextwrap .tagcontext{flex:1}.contextwrap button{border:0;background:transparent;color:#145f48;font-size:20px}.modalwrap{position:absolute;inset:0;background:#0b261aa8;z-index:30;display:flex;align-items:center;justify-content:center;padding:15px}.modalwrap.sheet{align-items:flex-end;padding:0}.dialog{background:white;width:100%;max-height:92%;overflow:auto;border-radius:17px;padding:18px 15px;display:flex;flex-direction:column;gap:13px}.modalwrap.sheet .dialog{border-radius:19px 19px 0 0;padding-bottom:23px}.dialog h3{margin:0;color:#123524;font-size:18px}.dialog .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}.opt{display:flex;align-items:center;gap:10px;border:1px solid #bed8c5;border-radius:11px;padding:12px 11px;text-align:left;color:#102e20;background:white;width:100%}.opt .ico{display:grid;place-items:center;width:40px;height:40px;background:#dbeee3;border-radius:10px;color:#086e4f;font-size:21px;flex-shrink:0}.opt strong{font-size:13px;color:#102e20!important;-webkit-text-fill-color:#102e20!important;font-weight:850!important;opacity:1!important}.opt small{font-size:11px;color:#34513d!important;-webkit-text-fill-color:#34513d!important;font-weight:600!important;opacity:1!important;display:block;margin-top:4px}.alert{background:#fee8e3;border:1px solid #e4b8b1;color:#922c28;padding:10px;border-radius:10px;font-size:12px;font-weight:750}.floattrash{position:absolute;z-index:27;border:2px solid #d49f97;background:#fff1ee;color:#ad4137;width:55px;height:55px;border-radius:17px;display:none;place-items:center;font-size:28px;pointer-events:none}.floattrash.hit{background:#b24339;color:white}.dragghost{position:absolute;z-index:28;background:#0c7657;color:white;padding:10px;border-radius:9px;pointer-events:none;font-size:12px;font-weight:800;box-shadow:0 8px 30px #0003;max-width:150px;text-align:center}.footnote{font-size:11px;color:#45634e;line-height:1.5}.login{justify-content:center;gap:17px}.loginlogo{width:132px;height:132px;margin:0 auto;display:block;object-fit:contain;border-radius:18px;box-shadow:0 8px 22px #0c22161c;background:#fff;padding:6px}.logo-image{width:100%;height:100%;display:block;object-fit:contain}.badge{background:#f9edcc;color:#72570b;border-radius:5px;padding:3px 7px;font-size:10px;font-weight:750}.toast{position:absolute;z-index:60;bottom:65px;left:15px;right:15px;border-radius:9px;background:#194934;color:white;font-size:12px;padding:12px;text-align:center;display:none}@media (min-width:540px){body{padding:15px}#app{border-radius:23px;height:min(calc(100dvh - 30px),850px);min-height:600px}}@media(max-height:610px){#app{min-height:100dvh}}
 .header .header-usericon{width:34px;height:34px;min-width:34px;border:1px solid #ffffff55;color:white;background:#ffffff1e;border-radius:10px;padding:6px;display:grid;place-items:center}.header .header-usericon svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.header .header-usericon:focus-visible{outline:3px solid #c8f8de;outline-offset:2px}
 
@@ -530,12 +534,24 @@ function doLogin(u,p){return cloudLogin(u,p)}
 function logout(){me=null;tab='calendar';employee=null;thread=null;ctx=null;draft='';closeDialog();saveDemo();render()}
 function loginHTML(){return '<div class="page login">'+logoIMG('loginlogo')+'<div style="text-align:center">'+heading('Ingresar a ATM Manager','AUTOMOTRIZ MEDINA SV')+'</div><form class="card" id="login"><label class="field">Usuario<input name="username" autocomplete="username" required></label><label class="field">Contraseña<input name="password" type="password" autocomplete="current-password" required></label>'+(error?'<div class="alert">'+esc(error)+'</div>':'')+'<button class="btn" type="submit">Ingresar</button></form></div>'}
 function usersHTML(){const list=users.slice().sort((a,b)=>a.name.localeCompare(b.name,'es'));return '<div class="page">'+heading('Usuarios','ADMINISTRACIÓN DE CUENTAS')+'<button class="btn" data-a="newuser">＋ Crear usuario</button><div class="row"><b>Cuentas registradas</b><span class="pill">'+list.length+' cuentas</span></div><div class="stack">'+list.map(u=>'<button class="item" data-a="edituser" data-id="'+u.id+'"><span class="avatar">'+esc(u.name.charAt(0))+'</span><span class="details"><strong>'+esc(u.name)+'</strong><small>Usuario: '+esc(u.username)+' · '+roleLabel(u.role)+' · '+(u.active?'Activo':'Inactivo')+'</small></span>›</button>').join('')+'</div></div>'}
+function weekSlideHTML(anchor,scope,offset){
+ const d=new Date(dayAdd(anchor,offset*7)+'T12:00:00Z');d.setUTCDate(d.getUTCDate()-((d.getUTCDay()+6)%7));
+ return '<div class="week atm-week-slide" data-week-offset="'+offset+'">'+Array.from({length:6},(_,i)=>{
+  const date=new Date(d);date.setUTCDate(date.getUTCDate()+i);
+  const k=date.toISOString().slice(0,10);
+  return '<button class="day '+(k===day?'active':'')+'" data-a="date" data-day="'+k+'"><small>'+['L','M','M','J','V','S'][i]+'</small><b>'+date.getUTCDate()+'</b>'+
+   (displayDayTotal(k,scope)?'<span style="height:4px;width:4px;background:currentColor;border-radius:50%"></span>':'<span style="height:4px"></span>')+'</button>';
+ }).join('')+'</div>';
+}
 function calWeek(scope){
  const d=new Date(week+'T12:00:00Z');d.setUTCDate(d.getUTCDate()-((d.getUTCDay()+6)%7));
- const days=Array.from({length:6},(_,i)=>{const a=new Date(d);a.setUTCDate(a.getUTCDate()+i);return a});
  const month=d.toLocaleDateString('es-SV',{timeZone:'UTC',month:'long',year:'numeric'});
- return '<div class="atm-week-swipe" aria-label="Calendario semanal. Deslizá a la izquierda o derecha para cambiar de semana"><div class="row"><b style="font-size:13px">'+esc(month.charAt(0).toUpperCase()+month.slice(1))+'</b><div class="week-nav"><button class="arw" data-a="prev" aria-label="Semana anterior">‹</button><button class="arw" data-a="next" aria-label="Semana siguiente">›</button>'+(me?.role==='admin'&&tab==='calendar'?'<button class="month-trigger" data-a="showmonth" aria-label="Ver mes completo" title="Ver mes completo"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M7 2v4M17 2v4M3 9h18M8 13h2m4 0h2m-8 4h2m4 0h2"/></svg></button>':'')+'</div></div><div class="week">'+days.map((d,i)=>{const k=d.toISOString().slice(0,10);return '<button class="day '+(k===day?'active':'')+'" data-a="date" data-day="'+k+'"><small>'+['L','M','M','J','V','S'][i]+'</small><b>'+d.getUTCDate()+'</b>'+(displayDayTotal(k,scope)?'<span style="height:4px;width:4px;background:currentColor;border-radius:50%"></span>':'<span style="height:4px"></span>')+'</button>'}).join('')+'</div></div>';
+ return '<div class="atm-week-swipe" aria-label="Calendario de lunes a sábado. Deslizá para ver la siguiente semana">'+
+ '<div class="row"><b style="font-size:13px">'+esc(month.charAt(0).toUpperCase()+month.slice(1))+'</b><div class="week-nav"><button class="arw" data-a="prev" aria-label="Semana anterior">‹</button><button class="arw" data-a="next" aria-label="Semana siguiente">›</button>'+
+ (me?.role==='admin'&&tab==='calendar'?'<button class="month-trigger" data-a="showmonth" aria-label="Ver mes completo" title="Ver mes completo"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M7 2v4M17 2v4M3 9h18M8 13h2m4 0h2m-8 4h2m4 0h2"/></svg></button>':'')+'</div></div>'+
+ '<div class="atm-week-viewport"><div class="atm-week-track">'+[-1,0,1].map(n=>weekSlideHTML(week,scope,n)).join('')+'</div></div></div>';
 }
+
 function jobsGroup(u){
  const work=displaySchedule(u.id,day);
  return '<div class="group"><div class="row"><div class="row" style="justify-content:flex-start"><span class="avatar" style="height:32px;width:32px">'+esc(u.name.charAt(0))+'</span><b>'+esc(u.name)+'</b></div><span class="pill">'+work.length+' asignaciones</span></div>'+
@@ -997,7 +1013,7 @@ function clearChats(){
  closeDialog();render();notify('Historial ocultado solo en esta cuenta');
 }
 function inRect(el,x,y,p=0){if(!el)return false;const r=el.getBoundingClientRect();return x>=r.left-p&&x<=r.right+p&&y>=r.top-p&&y<=r.bottom+p}
-function longBegin(o){if(pending!==o||!o.el.isConnected||dialog)return;pending=null;const b=o.el.getBoundingClientRect(),r=root.getBoundingClientRect();bin.style.display='grid';bin.style.left=Math.max(6,Math.min(r.width-61,b.left+b.width/2-r.left-28))+'px';bin.style.top=Math.max(70,Math.min(r.height-140,b.top-r.top-76))+'px';const ghost=document.createElement('div');ghost.className='dragghost';ghost.textContent=o.kind==='day'?fmt(o.day):o.title;root.appendChild(ghost);drag={...o,ghost,hover:0,timer:null};ghostMove(o.x,o.y)}
+function longBegin(o){if(pending!==o||!o.el.isConnected||dialog)return;if(o.kind==='day'&&atmWeekSwipe?.pid===o.pid)atmWeekSwipe.cancelled=true;pending=null;const b=o.el.getBoundingClientRect(),r=root.getBoundingClientRect();bin.style.display='grid';bin.style.left=Math.max(6,Math.min(r.width-61,b.left+b.width/2-r.left-28))+'px';bin.style.top=Math.max(70,Math.min(r.height-140,b.top-r.top-76))+'px';const ghost=document.createElement('div');ghost.className='dragghost';ghost.textContent=o.kind==='day'?fmt(o.day):o.title;root.appendChild(ghost);drag={...o,ghost,hover:0,timer:null};ghostMove(o.x,o.y)}
 function ghostMove(x,y){if(!drag)return;const r=root.getBoundingClientRect();drag.ghost.style.left=Math.max(4,Math.min(r.width-155,x-r.left+11))+'px';drag.ghost.style.top=Math.max(68,Math.min(r.height-64,y-r.top+10))+'px'}
 function arrowHold(v){if(!drag)return;if(drag.hover===v)return;clearTimeout(drag.timer);drag.hover=v;if(!v)return;const d=drag;function advance(){if(drag!==d||d.hover!==v)return;week=dayAdd(week,v*7);drawMain(true);d.timer=setTimeout(advance,1200)}d.timer=setTimeout(advance,650)}
 function clearDrag(){if(pending){clearTimeout(pending.timer);pending=null}if(!drag)return;clearTimeout(drag.timer);drag.ghost.remove();drag=null;bin.style.display='none';bin.classList.remove('hit')}
@@ -1136,54 +1152,51 @@ root.addEventListener('submit',async e=>{
  }
 },true);
 
-/* Navegación táctil del calendario: mover exactamente siete días.
-   Se mantiene seleccionado el mismo día de la semana. Solo afecta la interfaz. */
-let atmWeekSwipe=null,atmWeekSwipeBlockedUntil=0;
+/* Vista previa deslizante: semanas vecinas siguen el movimiento del dedo. */
+let atmWeekSwipe=null,atmWeekSwipeBlockedUntil=0,atmWeekFinishTimer=null;
 function atmMoveCalendarWeek(direction){
  if(!me||dialog||!(tab==='calendar'||(tab==='tasks'&&employee)))return;
  if(direction!==1&&direction!==-1)return;
- day=dayAdd(day,direction*7);
- week=day;
- render(true);
+ day=dayAdd(day,direction*7);week=day;render(true);
+}
+function atmWeekTrackPosition(track,px,animate){
+ if(!track)return;
+ track.style.transition=animate?'transform 210ms cubic-bezier(.22,.78,.25,1)':'none';
+ track.style.transform='translate3d(calc(-33.333333% + '+px+'px),0,0)';
 }
 root.addEventListener('pointerdown',e=>{
- if(!me||dialog||e.pointerType!=='touch'||e.button!==0)return;
- if(!(tab==='calendar'||(tab==='tasks'&&employee)))return;
- const strip=e.target.closest('.atm-week-swipe');
- if(!strip||!main.contains(strip))return;
- atmWeekSwipe={pid:e.pointerId,x:e.clientX,y:e.clientY,cancelled:false};
+ if(!me||dialog||drag||e.button!==0||!(tab==='calendar'||(tab==='tasks'&&employee)))return;
+ const viewport=e.target.closest('.atm-week-viewport');if(!viewport||!main.contains(viewport))return;
+ const track=viewport.querySelector('.atm-week-track');if(!track)return;
+ clearTimeout(atmWeekFinishTimer);atmWeekFinishTimer=null;
+ atmWeekSwipe={pid:e.pointerId,x:e.clientX,y:e.clientY,track,width:viewport.getBoundingClientRect().width,dx:0,moving:false,cancelled:false};
 },true);
 root.addEventListener('pointermove',e=>{
- const w=atmWeekSwipe;
- if(!w||w.pid!==e.pointerId||w.cancelled)return;
+ const w=atmWeekSwipe;if(!w||w.pid!==e.pointerId||w.cancelled)return;
  const dx=e.clientX-w.x,dy=e.clientY-w.y;
- if(Math.abs(dy)>22&&Math.abs(dy)>Math.abs(dx)){
-  w.cancelled=true;return;
- }
- if(Math.abs(dx)>15&&Math.abs(dx)>Math.abs(dy)*1.1){
-  // Cancelar el arrastre prolongado al detectar un deslizamiento de semana.
+ if(!w.moving&&Math.abs(dy)>13&&Math.abs(dy)>Math.abs(dx)){w.cancelled=true;return;}
+ if(!w.moving&&Math.abs(dx)>10&&Math.abs(dx)>Math.abs(dy)*1.15){
+  w.moving=true;
   if(pending&&pending.pid===e.pointerId){clearTimeout(pending.timer);pending=null;}
  }
+ if(!w.moving)return;
+ if(e.cancelable)e.preventDefault();
+ const limit=Math.max(1,w.width)*1.06;w.dx=Math.max(-limit,Math.min(limit,dx));
+ atmWeekTrackPosition(w.track,w.dx,false);
 },true);
-root.addEventListener('pointerup',e=>{
- const w=atmWeekSwipe;
- if(!w||w.pid!==e.pointerId)return;
- atmWeekSwipe=null;
- const dx=e.clientX-w.x,dy=e.clientY-w.y;
- if(w.cancelled||drag||Math.abs(dx)<55||Math.abs(dx)<=Math.abs(dy)*1.25)return;
+function atmFinishWeekGesture(e,cancelled=false){
+ const w=atmWeekSwipe;if(!w||w.pid!==e.pointerId)return;
+ atmWeekSwipe=null;if(!w.moving)return;
  if(pending&&pending.pid===e.pointerId){clearTimeout(pending.timer);pending=null;}
- blockedClick=Date.now()+550;
- atmWeekSwipeBlockedUntil=Date.now()+550;
- atmMoveCalendarWeek(dx<0?1:-1);
-},true);
-root.addEventListener('pointercancel',e=>{
- if(atmWeekSwipe?.pid===e.pointerId)atmWeekSwipe=null;
-},true);
+ blockedClick=Date.now()+450;atmWeekSwipeBlockedUntil=Date.now()+450;
+ const direction=cancelled||w.cancelled||Math.abs(w.dx)<Math.min(56,w.width*.2)?0:(w.dx<0?1:-1);
+ atmWeekTrackPosition(w.track,direction===1?-w.width:direction===-1?w.width:0,true);
+ if(direction)atmWeekFinishTimer=setTimeout(()=>{atmWeekFinishTimer=null;atmMoveCalendarWeek(direction)},215);
+}
+root.addEventListener('pointerup',e=>atmFinishWeekGesture(e),true);
+root.addEventListener('pointercancel',e=>atmFinishWeekGesture(e,true),true);
 root.addEventListener('click',e=>{
- if(Date.now()>=atmWeekSwipeBlockedUntil)return;
- if(e.target.closest('.atm-week-swipe,.day[data-day]')){
-  e.preventDefault();e.stopImmediatePropagation();
- }
+ if(Date.now()<atmWeekSwipeBlockedUntil&&e.target.closest('.atm-week-swipe,.day[data-day]')){e.preventDefault();e.stopImmediatePropagation();}
 },true);
 /* El contador rojo permanece hasta que el empleado decide marcarlo como visto:
    tocar Calendario otra vez, estando ya en Calendario. No muestra tarjetas. */
