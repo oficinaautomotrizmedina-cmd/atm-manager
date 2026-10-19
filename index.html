@@ -412,15 +412,15 @@ const onDay=(d,scope)=>jobs.filter(x=>x.day===d&&(scope==='all'||(scope!=='pendi
 const convo=(id)=>{
  const cutoff=seen[me?.uuid+':'+uuidFor(id)];
  const until=cutoff&&typeof cutoff==='object'&&Number.isFinite(cutoff.until)?cutoff.until:0;
- return messages.filter(m=>m.employeeId===Number(id)&&m.ts>until);
+ return messages.filter(m=>m.employeeId===Number(id)&&m.ts>until&&m.category!=='Registrar bitácora');
 };
 const msgThreadId=()=>me?.role==='admin'?thread:me?.id;
-const unreadCount=(id)=>!me?0:messages.filter(x=>x.employeeId===Number(id)&&x.sender!==me.id&&x.uuid&&!cloud.readNoticeIds.has(x.uuid)).length;
+const unreadCount=(id)=>!me?0:messages.filter(x=>x.employeeId===Number(id)&&x.category!=='Registrar bitácora'&&x.sender!==me.id&&x.uuid&&!cloud.readNoticeIds.has(x.uuid)).length;
 const totalUnread=()=>!me?0:me.role==='admin'?staff().reduce((n,x)=>n+unreadCount(x.id),0):unreadCount(me.id);
 const unreadCalendar=()=>!me||me.role==='admin'?[]:calendarChanges.filter(c=>c.recipient_id===me.uuid&&!c.read_at&&!cloud.readCalendarIds.has(c.id));
 function markRead(id){
  if(!me||!id||!cloud.sb)return;
- const author=me.uuid,unread=messages.filter(m=>m.employeeId===Number(id)&&m.sender!==me.id&&m.uuid&&!cloud.readNoticeIds.has(m.uuid)).map(m=>m.uuid);
+ const author=me.uuid,unread=messages.filter(m=>m.employeeId===Number(id)&&m.category!=='Registrar bitácora'&&m.sender!==me.id&&m.uuid&&!cloud.readNoticeIds.has(m.uuid)).map(m=>m.uuid);
  if(!unread.length)return;
  unread.forEach(x=>cloud.readNoticeIds.add(x));
  cloud.sb.from('atm_notice_reads').upsert(unread.map(notice_id=>({notice_id,user_id:author})),{onConflict:'notice_id,user_id',ignoreDuplicates:true}).then(({error})=>{
@@ -850,7 +850,7 @@ else if(dialog.type==='vehicles'){
 
 else if(dialog.type==='newlogvehicle'){
  sheet=true;h='<div class="row"><h3>Agregar vehículo a bitácora</h3><button class="btn ghost" data-a="close">×</button></div>'+
- '<p class="sub">Solo se registra el vehículo y su bitácora. No se agregan indicaciones ni se crea una orden de trabajo.</p>'+
+ 
  '<form class="stack" id="atm-new-log-vehicle"><label class="field">Marca, modelo y año<input name="vehicle" maxlength="130" required placeholder="Ej. Mitsubishi Mighty 1998" autocomplete="off"></label>'+
  '<div class="row"><button type="button" class="btn ghost" data-a="back-log-vehicles">Volver</button><button type="submit" class="btn">Continuar a bitácora</button></div></form>';
 }
@@ -1573,7 +1573,7 @@ async function cloudWrite(){
     }else throw e;
    }
    cloud.lastNotice.add(m.uuid);atmForgetPending(m.uuid,expectedId);updateSendCheck(m.uuid);
-   await atmPushDispatch('notice',m.uuid);
+   if(m.category!=='Registrar bitácora')await atmPushDispatch('notice',m.uuid);
   }
   if(me.role==='admin')for(const old of [...cloud.lastWork.keys()]){
    if(seenIds.has(old))continue;
