@@ -396,7 +396,7 @@ function pendingPanel(d,adminCanEdit=false){const arr=pendingBookings(d);if(!arr
  return '<div class="pending-box"><div class="row"><span class="pending-header">◷ PENDIENTES DE ASIGNAR</span><span class="pill">'+arr.length+' vehículos</span></div>'+arr.map(a=>bookingHTML(a,adminCanEdit,null,false)).join('')+'</div>';
 }
 
-let me=null,tab='calendar',employee=null,thread=null,day=initialWorkDay,week=initialWorkDay,filter='all',logDay=initialWorkDay,logWeek=initialWorkDay,logEmployee='all',logCategory='Registrar bitácora',logSelectMode=false,logSelected=new Set(),logHoldDay=null,logHoldTimer=null,logIgnoreDayClickUntil=0,monthCursor=BASE,dialog=null,ctx=null,draft='',adminAllowReply=false,error='',seen={},readBy={},drag=null,pending=null,toastTimer=null,blockedClick=0;
+let me=null,tab='calendar',employee=null,thread=null,day=BASE,week=BASE,filter='all',logDay=BASE,logWeek=BASE,logEmployee='all',logCategory='Registrar bitácora',logSelectMode=false,logSelected=new Set(),logHoldDay=null,logHoldTimer=null,logIgnoreDayClickUntil=0,monthCursor=BASE,dialog=null,ctx=null,draft='',adminAllowReply=false,error='',seen={},readBy={},drag=null,pending=null,toastTimer=null,blockedClick=0;
 function saveDemo(){cloudChange();}
 function restoreDemo(){}
 function currentSessionId(){const data=readPersisted();return data?.meId??null}
