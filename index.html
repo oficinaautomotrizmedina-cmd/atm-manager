@@ -1176,8 +1176,7 @@ function atmWeekTrackPosition(track,px,animate){
 root.addEventListener('pointerdown',e=>{
  if(!me||dialog||drag||e.button!==0||!(tab==='calendar'||(tab==='tasks'&&employee)))return;
  const viewport=e.target.closest('.atm-week-viewport');if(!viewport||!main.contains(viewport))return;
- const track=viewport.querySelector('.atm-week-track');if(!track)return;
- clearTimeout(atmWeekFinishTimer);atmWeekFinishTimer=null;
+ const track=viewport.querySelector('.atm-week-track');if(!track||atmWeekFinishTimer)return;
  atmWeekSwipe={pid:e.pointerId,x:e.clientX,y:e.clientY,track,width:viewport.getBoundingClientRect().width,dx:0,moving:false,cancelled:false};
 },true);
 root.addEventListener('pointermove',e=>{
