@@ -1171,7 +1171,7 @@ function atmMoveCalendarWeek(direction){
 function atmWeekTrackPosition(track,px,animate){
  if(!track)return;
  track.style.transition=animate?'transform 210ms cubic-bezier(.22,.78,.25,1)':'none';
- track.style.transform='translate3d(calc(-33.333333% + '+px+'px),0,0)';
+ track.style.transform='translate3d(calc(-33.333333% '+(px<0?'- ':'+ ')+Math.abs(px)+'px),0,0)';
 }
 root.addEventListener('pointerdown',e=>{
  if(!me||dialog||drag||e.button!==0||!(tab==='calendar'||(tab==='tasks'&&employee)))return;
