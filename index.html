@@ -2,7 +2,7 @@
 
 <html lang="es"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,maximum-scale=1" name="viewport"/><title>ATM Manager · Automotriz Medina SV</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#e8ede9;font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#163829}button,input,textarea,select{font:inherit}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}#app{width:min(100%,480px);height:min(100dvh,860px);min-height:600px;margin:auto;display:flex;flex-direction:column;background:#f5f8f5;box-shadow:0 12px 50px #0d2d182c;position:relative;overflow:hidden}.header{padding:19px 16px;background:#0e604d;color:white;display:flex;align-items:center;gap:10px;flex-shrink:0}.header .mark{width:44px;height:44px;display:grid;place-items:center;background:#ffffff14;border-radius:12px;overflow:hidden;flex-shrink:0;padding:2px}.header .mark .logo-image{border-radius:9px;object-fit:cover}.header strong{font-size:18px}.header small{display:block;color:#e1f1e5;font-size:10px;margin-top:2px}.grow{flex:1;min-width:0}.header button{border:1px solid #ffffff40;color:white;background:#ffffff17;padding:8px;border-radius:9px;font-size:11px}.content{min-height:0;flex:1;overflow:auto}.page{padding:19px 15px 24px;display:flex;flex-direction:column;gap:13px}.overline{font-size:10px;letter-spacing:1px;color:#3c614b;font-weight:850}.ttl{font-weight:850;color:#153727;font-size:23px;margin:4px 0 0}.sub{font-size:12px;color:#3d5c48;line-height:1.5}.card{background:white;border:1px solid #d8e6d9;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px}.field{display:flex;flex-direction:column;gap:6px;font-weight:750;font-size:12px;color:#245039}.field input,.field select,.field textarea{width:100%;background:white;color:#183a29;border:1px solid #bcd6c3;padding:11px;border-radius:9px;outline-color:#097857;font-size:13px}.field textarea{min-height:100px;resize:vertical}.btn{background:#086d53;border:1px solid #086d53;color:white;border-radius:10px;padding:11px 13px;min-height:42px;font-size:12px;font-weight:800}.btn.ghost{background:white;border-color:#bfd8c6;color:#096a4d}.btn.red{background:#ae453a;border-color:#ae453a}.row{display:flex;align-items:center;justify-content:space-between;gap:8px}.stack{display:flex;flex-direction:column;gap:9px}.pill{font-size:10px;font-weight:800;background:#e0efe4;color:#166449;padding:5px 8px;border-radius:7px}.notice{border:1px solid #c7e2d0;background:#e3f1e6;border-radius:10px;padding:11px;color:#234d35;font-size:12px;line-height:1.5}.nav{display:grid;background:white;border-top:1px solid #d5e5d8;padding:4px 5px;flex-shrink:0}.nav button{border:0;background:white;color:#3f6350;padding:9px 1px;font-weight:800;font-size:11px;display:flex;flex-direction:column;align-items:center;gap:4px}.nav .active{color:#067858}.nav .symbol{font-size:21px}.avatar{width:38px;height:38px;border-radius:50%;background:#d7ecdc;color:#08634c;font-weight:850;display:grid;place-items:center;flex-shrink:0}.item{background:white;border:1px solid #d7e5d9;border-radius:11px;padding:12px;display:flex;gap:11px;align-items:center;text-align:left;width:100%;color:#163a29}.item .details{flex:1;min-width:0}.item strong{font-size:13px;color:#153727;display:block;line-height:1.4}.item small{font-size:11px;color:#42614c;display:block;line-height:1.45;margin-top:4px}.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+*{box-sizing:border-box}body{margin:0;background:#e8ede9;font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#163829}button,input,textarea,select{font:inherit}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}#app{width:min(100%,480px);height:min(100dvh,860px);min-height:600px;margin:auto;display:flex;flex-direction:column;background:#f5f8f5;box-shadow:0 12px 50px #0d2d182c;position:relative;overflow:hidden}.header{padding:19px 16px;background:#0e604d;color:white;display:flex;align-items:center;gap:10px;flex-shrink:0}.header .mark{width:44px;height:44px;display:grid;place-items:center;background:#ffffff14;border-radius:12px;overflow:hidden;flex-shrink:0;padding:2px}.header .mark .logo-image{border-radius:9px;object-fit:cover}.header strong{font-size:18px}.header small{display:block;color:#e1f1e5;font-size:10px;margin-top:2px}.grow{flex:1;min-width:0}.header button{border:1px solid #ffffff40;color:white;background:#ffffff17;padding:8px;border-radius:9px;font-size:11px}.content{min-height:0;flex:1;overflow:auto}.page{padding:19px 15px 24px;display:flex;flex-direction:column;gap:13px}.overline{font-size:10px;letter-spacing:1px;color:#3c614b;font-weight:850}.ttl{font-weight:850;color:#153727;font-size:23px;margin:4px 0 0}.sub{font-size:12px;color:#3d5c48;line-height:1.5}.card{background:white;border:1px solid #d8e6d9;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px}.field{display:flex;flex-direction:column;gap:6px;font-weight:750;font-size:12px;color:#245039}.field input,.field select,.field textarea{width:100%;background:white;color:#183a29;border:1px solid #bcd6c3;padding:11px;border-radius:9px;outline-color:#097857;font-size:13px}.field textarea{min-height:100px;resize:vertical}.btn{background:#086d53;border:1px solid #086d53;color:white;border-radius:10px;padding:11px 13px;min-height:42px;font-size:12px;font-weight:800}.btn.ghost{background:white;border-color:#bfd8c6;color:#096a4d}.btn.red{background:#ae453a;border-color:#ae453a}.row{display:flex;align-items:center;justify-content:space-between;gap:8px}.stack{display:flex;flex-direction:column;gap:9px}.pill{font-size:10px;font-weight:800;background:#e0efe4;color:#166449;padding:5px 8px;border-radius:7px}.notice{border:1px solid #c7e2d0;background:#e3f1e6;border-radius:10px;padding:11px;color:#234d35;font-size:12px;line-height:1.5}.nav{display:grid;background:white;border-top:1px solid #d5e5d8;padding:4px 5px;flex-shrink:0}.nav button{border:0;background:white;color:#3f6350;padding:9px 1px;font-weight:800;font-size:11px;display:flex;flex-direction:column;align-items:center;gap:4px}.nav .active{color:#067858}.nav .symbol{font-size:21px}.avatar{width:38px;height:38px;border-radius:50%;background:#d7ecdc;color:#08634c;font-weight:850;display:grid;place-items:center;flex-shrink:0}.item{background:white;border:1px solid #d7e5d9;border-radius:11px;padding:12px;display:flex;gap:11px;align-items:center;text-align:left;width:100%;color:#163a29}.item .details{flex:1;min-width:0}.item strong{font-size:13px;color:#153727;display:block;line-height:1.4}.item small{font-size:11px;color:#42614c;display:block;line-height:1.45;margin-top:4px}.week{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px}
 /* El calendario se desplaza horizontalmente sin bloquear el movimiento vertical
    del teléfono. Los gestos de arrastre existentes conservan su función. */
 #app .atm-week-swipe{display:flex;flex-direction:column;gap:10px;touch-action:pan-y;min-width:0}
@@ -143,6 +143,19 @@
 .log-type.problem{color:#8b342b;background:#fde8e4}.log-type.progress{color:#675000;background:#fff1cc}
 .log-detail-content{display:flex;flex-direction:column;gap:10px;background:#f6faf7;border:1px solid #d6e5da;border-radius:11px;padding:13px}
 .log-detail-content p{margin:0;color:#274e37;font-size:12px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+/* Bitácoras debajo de tareas: registros originales, sin avances. */
+#app .atm-work-with-log{display:flex;flex-direction:column;gap:6px;min-width:0}
+#app .atm-work-log{background:#f0f8f2;border:1px solid #c9e2d1;border-left:3px solid #0d815c;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px}
+#app .atm-work-log>strong{font-size:11px;color:#0f6449}
+#app .atm-work-log-entry{display:flex;align-items:flex-start;gap:7px;border-top:1px solid #d9e8dc;padding-top:8px}
+#app .atm-work-log-entry:first-of-type{border-top:none;padding-top:0}
+#app .atm-work-log-text{flex:1;min-width:0;font-size:12px;color:#244f39;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+#app .atm-work-log-text small{display:block;color:#61806a;font-size:10px;font-weight:700;margin-top:4px}
+#app .atm-work-log-delete{border:1px solid #e7c1be;border-radius:8px;background:#fff7f6;color:#a1322b;min-width:30px;min-height:30px;font-size:19px;line-height:1}
+#app .atm-standalone-card{background:white;border:1px solid #cddfd2;border-left:4px solid #16805d;border-radius:10px;padding:12px;display:flex;align-items:center;gap:10px;color:#183d2b}
+#app .atm-standalone-card .details{min-width:0;flex:1;display:flex;flex-direction:column;gap:4px}
+#app .atm-standalone-card small{font-size:10px;color:#3f7758;font-weight:800}
+#app .atm-log-new-vehicle{border:1px dashed #70b38a!important;background:#f0faf3!important;color:#075b40!important}
 .log-shortcut{border:1px solid #c7dfce;background:#edf7f0;border-radius:11px;color:#175d42;display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;padding:11px 12px;width:100%;font-size:12px;font-weight:800}
 .log-shortcut b{background:white;border:1px solid #cfdfd3;border-radius:8px;padding:5px 8px;font-size:10px;color:#115c42}
 .atm-report-shortcuts{display:flex;flex-direction:column;gap:8px}
@@ -337,6 +350,28 @@ function addReceptionHours(start,hours=2){
  return String(Math.floor(total/60)).padStart(2,'0')+':'+String(total%60).padStart(2,'0');
 }
 const PRIORITIES={red:{name:'Garantía / Alta prioridad',short:'Garantía / Alta',color:'#cd443b'},yellow:{name:'Nivel técnico',short:'Nivel técnico',color:'#e4ae2c'},green:{name:'Nivel ingeniería',short:'Nivel ingeniería',color:'#22996b'}};
+const standaloneLogs=(id,d)=>{
+ const matches=logs.filter(l=>l.category==='Registrar bitácora'&&l.taskType==='standalone'&&l.employeeId===Number(id)&&l.workDay===d);
+ const groups=new Map();
+ for(const l of matches){
+  const key=String(l.vehicle||'').trim().toLocaleLowerCase('es-SV');
+  if(!groups.has(key))groups.set(key,{kind:'standalone',key:'s'+(l.uuid||l.id),record:{userId:Number(id),day:d,vehicle:l.vehicle,instructions:''},logs:[]});
+  groups.get(key).logs.push(l);
+ }
+ return [...groups.values()];
+};
+const displaySchedule=(id,d)=>[...schedule(id,d),...standaloneLogs(id,d)];
+function taskLogsHTML(item){
+ if(me?.role!=='admin'||tab!=='tasks')return '';
+ const r=item.record,arr=item.kind==='standalone'?item.logs:logs.filter(l=>l.category==='Registrar bitácora'&&l.employeeId===r.userId&&l.workDay===r.day&&l.taskType===item.kind&&Number(l.taskId)===Number(r.id));
+ if(!arr?.length)return '';
+ return '<div class="atm-work-log"><strong>📖 Bitácora del día ('+arr.length+')</strong>'+
+ arr.slice().sort((a,b)=>a.ts-b.ts).map(l=>'<div class="atm-work-log-entry"><div class="atm-work-log-text">'+esc(l.text)+'<small>'+esc(logClock(l.ts))+'</small></div>'+
+ (l.uuid&&cloud.lastNotice.has(l.uuid)?'<button type="button" class="atm-work-log-delete" data-a="atm-inline-log-delete" data-uuid="'+esc(l.uuid)+'" title="Eliminar esta bitácora" aria-label="Eliminar esta bitácora">×</button>':'')+'</div>').join('')+'</div>';
+}
+function workWithLogsHTML(item,i,editable,draggable){
+ return '<div class="atm-work-with-log">'+workHTML(item,i,editable,draggable)+taskLogsHTML(item)+'</div>';
+}
 const bookedFor=(id,d)=>appointments.filter(a=>a.userId===Number(id)&&a.day===d).sort((a,b)=>(a.order??9999)-(b.order??9999)||a.id-b.id);
 const pendingBookings=(d)=>appointments.filter(a=>a.userId===null&&a.day===d).sort((a,b)=>a.id-b.id);
 const bookingsDay=(d,scope)=>appointments.filter(a=>a.day===d&&(scope==='all'||(scope==='pending'?a.userId===null:a.userId===Number(scope))));
@@ -348,7 +383,9 @@ function prependBooking(booking){if(booking.userId===null){booking.order=null;re
 function bookingHTML(a,adminCanEdit=false,position=null,draggable=false){const pr=PRIORITIES[a.priority]||PRIORITIES.yellow;
  return '<'+(adminCanEdit?'button':'div')+' class="booking-card priority-'+esc(a.priority)+(draggable?' task':'')+'" data-work-uuid="'+esc(a.uuid||'')+'"'+(adminCanEdit?' data-a="editbooking" data-booking="'+a.id+'" title="Editar vehículo agendado"':'')+(draggable?' data-work="b'+a.id+'"':'')+'>'+(position!==null?'<span class="numb">'+position+'</span>':'')+'<span class="booking-icon">🚘</span><span class="booking-content"><span class="booking-label">VEHÍCULO AGENDADO</span><strong class="booking-name">'+esc(a.vehicle)+'</strong>'+'<span class="booking-time'+(a.receptionStart&&a.receptionEnd?'':' unscheduled')+'">🕗 Recepción: '+esc(receptionRange(a))+'</span><p class="booking-instructions">'+esc(a.instructions)+'</p>'+(me?.role==='admin'&&a.serviceType&&a.serviceType!=='Por definir'?'<span class="service-pill">'+esc(a.serviceType==='Otro'?(a.serviceOther||'Otro'):a.serviceType)+'</span>':'')+'<span class="priority-label priority-'+esc(a.priority)+'"><span class="legend-dot '+esc(a.priority)+'"></span>'+esc(pr.name)+'</span>'+(a.userId===null?'<span class="assignment-flag" style="margin-left:5px">Pendiente de asignar</span>':'')+noteInCalendar('booking',a.id)+'</span>'+(draggable?'<span class="atm-task-drag-handle" title="Mantené presionado aquí para ordenar" aria-label="Mantener presionado para reordenar">⋮⋮</span>':adminCanEdit?'<span style="color:#296a4f;font-weight:900">›</span>':'')+'</'+(adminCanEdit?'button':'div')+'>';
 }
-function workHTML(item,i,adminCanEdit=false,draggable=false){if(item.kind==='booking')return bookingHTML(item.record,adminCanEdit,i+1,draggable);
+function workHTML(item,i,adminCanEdit=false,draggable=false){
+ if(item.kind==='standalone')return '<div class="atm-standalone-card"><span class="numb">'+(i+1)+'</span><div class="details"><strong>'+esc(item.record.vehicle)+'</strong><small>BITÁCORA · VEHÍCULO SIN AGENDAR</small></div></div>';
+ if(item.kind==='booking')return bookingHTML(item.record,adminCanEdit,i+1,draggable);
  const j=item.record;return '<'+(draggable?'button':'div')+' class="item'+(draggable?' task':'')+'" data-work-uuid="'+esc(j.uuid||'')+'" style="border-left:3px solid #91b7a0"'+(draggable?' data-a="editjob" data-job="'+j.id+'" data-work="j'+j.id+'"':'')+'><span class="numb">'+(i+1)+'</span><span class="details"><strong>'+esc(j.title)+'</strong>'+'<small>'+esc(j.detail)+'</small>'+noteInCalendar('job',j.id)+'</span>'+(draggable?'<span class="atm-task-drag-handle" title="Mantené presionado aquí para ordenar" aria-label="Mantener presionado para reordenar">⋮⋮</span>':'')+'</'+(draggable?'button':'div')+'>';
 }
 function pendingPanel(d,adminCanEdit=false){const arr=pendingBookings(d);if(!arr.length)return '';
@@ -496,7 +533,7 @@ function calWeek(scope){
  return '<div class="atm-week-swipe" aria-label="Calendario semanal. Deslizá a la izquierda o derecha para cambiar de semana"><div class="row"><b style="font-size:13px">'+esc(month.charAt(0).toUpperCase()+month.slice(1))+'</b><div class="week-nav"><button class="arw" data-a="prev" aria-label="Semana anterior">‹</button><button class="arw" data-a="next" aria-label="Semana siguiente">›</button>'+(me?.role==='admin'&&tab==='calendar'?'<button class="month-trigger" data-a="showmonth" aria-label="Ver mes completo" title="Ver mes completo"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M7 2v4M17 2v4M3 9h18M8 13h2m4 0h2m-8 4h2m4 0h2"/></svg></button>':'')+'</div></div><div class="week">'+days.map((d,i)=>{const k=d.toISOString().slice(0,10);return '<button class="day '+(k===day?'active':'')+'" data-a="date" data-day="'+k+'"><small>'+['L','M','M','J','V','S','D'][i]+'</small><b>'+d.getUTCDate()+'</b>'+(totalDay(k,scope)?'<span style="height:4px;width:4px;background:currentColor;border-radius:50%"></span>':'<span style="height:4px"></span>')+'</button>'}).join('')+'</div></div>';
 }
 function jobsGroup(u){
- const work=schedule(u.id,day);
+ const work=displaySchedule(u.id,day);
  return '<div class="group"><div class="row"><div class="row" style="justify-content:flex-start"><span class="avatar" style="height:32px;width:32px">'+esc(u.name.charAt(0))+'</span><b>'+esc(u.name)+'</b></div><span class="pill">'+work.length+' asignaciones</span></div>'+
  (work.length?'<div class="section-title">ORDEN DE TRABAJO</div><div class="work-queue">'+work.map((item,i)=>workHTML(item,i,me.role==='admin',false)).join('')+'</div>':'<span class="sub">No hay actividades para este día.</span>')+'</div>';
 }
@@ -524,8 +561,8 @@ function tasksHTML(){
  if(!employee)return '<div class="page">'+heading('Tareas','')+staff().map(u=>'<button class="item" data-a="employee" data-id="'+u.id+'"><span class="tech-name-chip">'+esc(u.name)+'</span><span class="details"><small>'+[...jobs,...appointments].filter(j=>j.userId===u.id).length+' asignaciones</small></span><span class="tech-chevron">›</span></button>').join('')+
  '<div class="section-title" style="margin-top:7px">RECEPCIÓN</div><button class="item pending-access" data-a="pending"><span class="avatar" style="background:#faecca;color:#79530e">◷</span><span class="details"><strong>Pendientes de asignar</strong><small class="pending-vehicle-preview">'+pendingVehicleSummary()+'</small></span>›</button></div>';
  if(employee==='pending')return '<div class="page"><button class="btn ghost" data-a="backemployee">‹ Volver a técnicos</button>'+heading('Pendientes de asignar','')+calWeek('pending')+'<div class="row"><b style="font-size:13px">'+esc(fmt(day))+'</b><span class="pill">'+pendingBookings(day).length+' pendientes</span></div>'+(pendingPanel(day,true)||'<div class="card sub">No hay vehículos pendientes en esta fecha.</div>')+'</div>';
- const u=user(employee),work=schedule(employee,day);
- return '<div class="page"><button class="btn ghost" data-a="backemployee">‹ Volver a técnicos</button>'+heading(u.name,'ORDEN DE ATENCIÓN')+'<button class="btn atm-task-add-cta" data-a="newjob">＋ Agregar actividad</button>'+calWeek(employee)+'<div class="row"><b style="font-size:13px">'+esc(fmt(day))+'</b><button type="button" class="atm-task-log-button" data-a="employee-logs">📖 Bitácora</button></div><div class="row"><span class="pill">'+work.length+' actividades</span></div><div class="work-queue">'+(work.length?work.map((item,i)=>workHTML(item,i,true,true)).join(''):'<div class="card sub">Todavía no hay trabajos asignados en este día.</div>')+'</div></div>';
+ const u=user(employee),work=displaySchedule(employee,day);
+ return '<div class="page"><button class="btn ghost" data-a="backemployee">‹ Volver a técnicos</button>'+heading(u.name,'ORDEN DE ATENCIÓN')+'<button class="btn atm-task-add-cta" data-a="newjob">＋ Agregar actividad</button>'+calWeek(employee)+'<div class="row"><b style="font-size:13px">'+esc(fmt(day))+'</b><button type="button" class="atm-task-log-button" data-a="employee-logs">📖 Bitácora</button></div><div class="row"><span class="pill">'+work.length+' actividades</span></div><div class="work-queue">'+(work.length?work.map((item,i)=>workWithLogsHTML(item,i,true,true)).join(''):'<div class="card sub">Todavía no hay trabajos asignados en este día.</div>')+'</div></div>';
 }
 
 function inboxHTML(){return '<div class="page">'+'<div class="row">'+heading('Avisos y mensajes','')+'<button class="btn ghost" data-a="allmenu" aria-label="Opciones de avisos">⋮</button></div><div class="stack">'+staff().map(u=>{const m=convo(u.id).slice(-1)[0],n=unreadCount(u.id);return '<button class="item chat-list-button" data-a="openchat" data-id="'+u.id+'"><span class="chat-name-chip">'+esc(u.name)+'</span><span class="details"><small class="chat-preview">'+esc(m?.text||'Sin avisos todavía')+'</small></span>'+(n?'<span class="unread-number">'+n+'</span>':'')+'<span class="chat-chevron">›</span></button>'}).join('')+'</div></div>'}
@@ -819,7 +856,7 @@ else if(dialog.type==='logdetail'){
  const l=logs.find(x=>x.id===dialog.id),owner=l?user(l.employeeId):null,pr=l?(PRIORITIES[l.priority]||null):null;
  h=l?'<div class="row"><div><div class="overline">REGISTRO DEL '+esc(fmt(l.workDay).toUpperCase())+'</div><h3>Detalle de '+esc(l.category==='Informar avance'?'avance':l.category==='Reportar problema'?'problema':'bitácora')+'</h3></div><span style="font-size:25px">📖</span></div>'+
  '<div class="log-detail-content"><div class="row"><b style="font-size:13px;color:#153b29">'+esc(l.vehicle)+'</b><span class="log-type '+(logKindClass[l.category]||'')+'">'+esc(logCategoryLabels[l.category]||l.category)+'</span></div>'+
- '<div class="sub"><b>Técnico:</b> '+esc(owner?.name||'Cuenta anterior')+'</div><div class="sub"><b>Actividad:</b> '+esc(l.taskType==='booking'?'Vehículo agendado':'Tarea interna')+(pr?' · '+esc(pr.name):'')+'</div>'+
+ '<div class="sub"><b>Técnico:</b> '+esc(owner?.name||'Cuenta anterior')+'</div><div class="sub"><b>Actividad:</b> '+esc(l.taskType==='standalone'?'Registro sin agendamiento':l.taskType==='booking'?'Vehículo agendado':'Tarea interna')+(pr?' · '+esc(pr.name):'')+'</div>'+
  '<div class="sub"><b>Indicaciones:</b> '+esc(l.taskDetail||'Sin indicaciones adicionales')+'</div><div class="sub"><b>Fecha de trabajo:</b> '+esc(fmt(l.workDay))+'</div><div class="sub"><b>Enviado:</b> '+esc(new Date(l.ts).toLocaleString('es-SV',{timeZone:'America/El_Salvador',dateStyle:'medium',timeStyle:'short'}))+'</div></div>'+
  '<div class="log-detail-content"><strong style="font-size:12px;color:#12422c">Registro escrito</strong><p>'+esc(l.text)+'</p></div><button class="btn" data-a="close">Cerrar registro</button>':'<div class="card sub">Registro no disponible</div>'+footer;
 }
@@ -1278,7 +1315,7 @@ root.addEventListener('click',e=>{
  }
  const actions=new Set(['atm-log-day-trash','atm-log-start-select','atm-log-cancel-select',
    'atm-log-select-one','atm-log-select-all','atm-log-delete-selected','atm-log-delete-one',
-   'atm-log-retry','atm-log-confirm-delete']);
+   'atm-log-retry','atm-log-confirm-delete','atm-inline-log-delete']);
  if(!actions.has(action)){
   if(['logdate','logprev','lognext','openlogs','logsdate','progressdate','employee-logs','logview'].includes(action)){logSelected.clear();logHoldDay=null}
   return;
@@ -1289,7 +1326,12 @@ root.addEventListener('click',e=>{
   if(!btn.disabled&&overlay.querySelector('#atm-log-ack')?.checked)atmLogDeleteNow(dialog);
   return;
  }
- if(action==='atm-log-day-trash'){
+ if(action==='atm-inline-log-delete'){
+   const row=logs.find(l=>l.uuid===btn.dataset.uuid&&l.category==='Registrar bitácora');
+   if(me?.role==='admin'&&tab==='tasks'&&row?.uuid&&cloud.lastNotice.has(row.uuid))atmLogAskDelete('ids',[row.uuid],null,'bitácora de '+row.vehicle);
+   return;
+  }
+  if(action==='atm-log-day-trash'){
   if(btn.dataset.day===logHoldDay){
     const selected=relevantLogs(logHoldDay,logEmployee,logCategory).filter(x=>x.uuid);
     if(selected.length)atmLogAskDelete('ids',selected.map(x=>x.uuid),null,reportMode().label+' del '+fmt(logHoldDay)+(logEmployee==='all'?'':' · '+(user(logEmployee)?.name||'técnico')));
@@ -1440,7 +1482,7 @@ function noticeToUI(row,workByUuid){let owner=uiFor(row.target_employee_id),send
 function reportLogs(){logs=[];nextLog=1;messages.forEach(m=>{if(!['Informar avance','Reportar problema','Registrar bitácora'].includes(m.category))return;
  const w=m.taskType==='job'?jobs.find(x=>x.id===m.taskId):appointments.find(x=>x.id===m.taskId);
  const workDay=m.workDay||w?.day||new Date(m.ts).toISOString().slice(0,10);
- logs.push({uuid:m.uuid,id:nextLog++,employeeId:m.employeeId,workDay,taskType:m.taskType||'booking',taskId:m.taskId,vehicle:m.vehicle||w?.vehicle||w?.title||'Actividad',taskDetail:m.taskDetail||w?.instructions||w?.detail||'',priority:m.priority||w?.priority||null,category:m.category,text:m.text,ts:m.ts}); });}
+ logs.push({uuid:m.uuid,id:nextLog++,employeeId:m.employeeId,workDay,taskType:m.taskType||(m.taskId==null&&m.category==='Registrar bitácora'?'standalone':'booking'),taskId:m.taskId,vehicle:m.vehicle||w?.vehicle||w?.title||'Actividad',taskDetail:m.taskDetail||w?.instructions||w?.detail||'',priority:m.priority||w?.priority||null,category:m.category,text:m.text,ts:m.ts}); });}
 async function cloudList(table,order){const all=[];for(let offset=0;offset<10000;offset+=500){let q=cloud.sb.from(table).select('*').range(offset,offset+499);if(order)q=q.order(order,{ascending:true});const {data,error}=await q;if(error)throw error;all.push(...(data||[]));if((data||[]).length<500)break;}return all;}
 async function cloudLoad(){if(!cloud.sb||cloud.busy||cloud.loading||!me)return;cloud.loading=true;const priorUuid=me.uuid;try{
  const [profiles,remoteWork,remoteMessages,readResult,remoteCalendar]=await Promise.all([
