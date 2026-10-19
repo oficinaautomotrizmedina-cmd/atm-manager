@@ -361,6 +361,10 @@ const standaloneLogs=(id,d)=>{
  return [...groups.values()];
 };
 const displaySchedule=(id,d)=>[...schedule(id,d),...standaloneLogs(id,d)];
+const displayDayTotal=(d,scope)=>totalDay(d,scope)+(
+ scope==='pending'||scope==='none'?0:scope==='all'?
+ staff().reduce((n,u)=>n+standaloneLogs(u.id,d).length,0):standaloneLogs(scope,d).length
+);
 function taskLogsHTML(item){
  if(me?.role!=='admin'||tab!=='tasks')return '';
  const r=item.record,arr=item.kind==='standalone'?item.logs:logs.filter(l=>l.category==='Registrar bitácora'&&l.employeeId===r.userId&&l.workDay===r.day&&l.taskType===item.kind&&Number(l.taskId)===Number(r.id));
@@ -530,7 +534,7 @@ function calWeek(scope){
  const d=new Date(week+'T12:00:00Z');d.setUTCDate(d.getUTCDate()-((d.getUTCDay()+6)%7));
  const days=Array.from({length:6},(_,i)=>{const a=new Date(d);a.setUTCDate(a.getUTCDate()+i);return a});
  const month=d.toLocaleDateString('es-SV',{timeZone:'UTC',month:'long',year:'numeric'});
- return '<div class="atm-week-swipe" aria-label="Calendario semanal. Deslizá a la izquierda o derecha para cambiar de semana"><div class="row"><b style="font-size:13px">'+esc(month.charAt(0).toUpperCase()+month.slice(1))+'</b><div class="week-nav"><button class="arw" data-a="prev" aria-label="Semana anterior">‹</button><button class="arw" data-a="next" aria-label="Semana siguiente">›</button>'+(me?.role==='admin'&&tab==='calendar'?'<button class="month-trigger" data-a="showmonth" aria-label="Ver mes completo" title="Ver mes completo"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M7 2v4M17 2v4M3 9h18M8 13h2m4 0h2m-8 4h2m4 0h2"/></svg></button>':'')+'</div></div><div class="week">'+days.map((d,i)=>{const k=d.toISOString().slice(0,10);return '<button class="day '+(k===day?'active':'')+'" data-a="date" data-day="'+k+'"><small>'+['L','M','M','J','V','S'][i]+'</small><b>'+d.getUTCDate()+'</b>'+(totalDay(k,scope)?'<span style="height:4px;width:4px;background:currentColor;border-radius:50%"></span>':'<span style="height:4px"></span>')+'</button>'}).join('')+'</div></div>';
+ return '<div class="atm-week-swipe" aria-label="Calendario semanal. Deslizá a la izquierda o derecha para cambiar de semana"><div class="row"><b style="font-size:13px">'+esc(month.charAt(0).toUpperCase()+month.slice(1))+'</b><div class="week-nav"><button class="arw" data-a="prev" aria-label="Semana anterior">‹</button><button class="arw" data-a="next" aria-label="Semana siguiente">›</button>'+(me?.role==='admin'&&tab==='calendar'?'<button class="month-trigger" data-a="showmonth" aria-label="Ver mes completo" title="Ver mes completo"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M7 2v4M17 2v4M3 9h18M8 13h2m4 0h2m-8 4h2m4 0h2"/></svg></button>':'')+'</div></div><div class="week">'+days.map((d,i)=>{const k=d.toISOString().slice(0,10);return '<button class="day '+(k===day?'active':'')+'" data-a="date" data-day="'+k+'"><small>'+['L','M','M','J','V','S'][i]+'</small><b>'+d.getUTCDate()+'</b>'+(displayDayTotal(k,scope)?'<span style="height:4px;width:4px;background:currentColor;border-radius:50%"></span>':'<span style="height:4px"></span>')+'</button>'}).join('')+'</div></div>';
 }
 function jobsGroup(u){
  const work=displaySchedule(u.id,day);
@@ -771,7 +775,7 @@ else if(dialog.type==='monthpicker'){
  '<div class="month-bar"><button class="arw" data-a="monthprev" aria-label="Mes anterior">‹</button><b>'+esc(title.charAt(0).toUpperCase()+title.slice(1))+'</b><button class="arw" data-a="monthnext" aria-label="Mes siguiente">›</button></div>'+
  '<div class="month-grid">'+['L','M','M','J','V','S'].map(x=>'<span class="month-weekday">'+x+'</span>').join('')+
  Array.from({length:offset},()=>'<span class="month-blank"></span>').join('')+
- Array.from({length:days},(_,i)=>{const dt=new Date(Date.UTC(y,mon,i+1,12));if(dt.getUTCDay()===0)return '';const k=dt.toISOString().slice(0,10),has=totalDay(k,filter);return '<button class="month-date '+(k===day?'active':'')+'" data-a="monthdate" data-day="'+k+'">'+(i+1)+(has?'<i></i>':'')+'</button>'}).join('')+'</div>';
+ Array.from({length:days},(_,i)=>{const dt=new Date(Date.UTC(y,mon,i+1,12));if(dt.getUTCDay()===0)return '';const k=dt.toISOString().slice(0,10),has=displayDayTotal(k,filter);return '<button class="month-date '+(k===day?'active':'')+'" data-a="monthdate" data-day="'+k+'">'+(i+1)+(has?'<i></i>':'')+'</button>'}).join('')+'</div>';
 }
 else if(dialog.type==='newuser'||dialog.type==='edituser'){
  const u=user(dialog.id),isExisting=!!u;
