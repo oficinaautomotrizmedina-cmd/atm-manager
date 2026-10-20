@@ -370,7 +370,7 @@ const displayDayTotal=(d,scope)=>totalDay(d,scope)+(
  staff().reduce((n,u)=>n+standaloneLogs(u.id,d).length,0):standaloneLogs(scope,d).length
 );
 function taskLogsHTML(item){
- if(me?.role!=='admin'||tab!=='tasks')return '';
+ if(me?.role!=='admin'||(tab!=='tasks'&&tab!=='calendar'))return '';
  const r=item.record,arr=item.kind==='standalone'?item.logs:logs.filter(l=>l.category==='Registrar bitácora'&&l.employeeId===r.userId&&l.workDay===r.day&&l.taskType===item.kind&&Number(l.taskId)===Number(r.id));
  if(!arr?.length)return '';
  return '<div class="atm-work-log"><strong>📖 Bitácora del día ('+arr.length+')</strong>'+
@@ -556,7 +556,7 @@ function calWeek(scope){
 function jobsGroup(u){
  const work=displaySchedule(u.id,day);
  return '<div class="group"><div class="row"><div class="row" style="justify-content:flex-start"><span class="avatar" style="height:32px;width:32px">'+esc(u.name.charAt(0))+'</span><b>'+esc(u.name)+'</b></div><span class="pill">'+work.length+' asignaciones</span></div>'+
- (work.length?'<div class="section-title">ORDEN DE TRABAJO</div><div class="work-queue">'+work.map((item,i)=>workHTML(item,i,me.role==='admin',false)).join('')+'</div>':'<span class="sub">No hay actividades para este día.</span>')+'</div>';
+ (work.length?'<div class="section-title">ORDEN DE TRABAJO</div><div class="work-queue">'+work.map((item,i)=>workWithLogsHTML(item,i,me.role==='admin',false)).join('')+'</div>':'<span class="sub">No hay actividades para este día.</span>')+'</div>';
 }
 
 function calendarHTML(){
@@ -1363,7 +1363,7 @@ root.addEventListener('click',e=>{
  }
  if(action==='atm-inline-log-delete'){
    const row=logs.find(l=>l.uuid===btn.dataset.uuid&&l.category==='Registrar bitácora');
-   if(me?.role==='admin'&&tab==='tasks'&&row?.uuid&&cloud.lastNotice.has(row.uuid))atmLogAskDelete('ids',[row.uuid],null,'bitácora de '+row.vehicle);
+   if(me?.role==='admin'&&(tab==='tasks'||tab==='calendar')&&row?.uuid&&cloud.lastNotice.has(row.uuid))atmLogAskDelete('ids',[row.uuid],null,'bitácora de '+row.vehicle);
    return;
   }
   if(action==='atm-log-day-trash'){
