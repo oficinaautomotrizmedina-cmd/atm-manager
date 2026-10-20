@@ -1978,7 +1978,7 @@ try{
  let inFlight=false,latest=null,lastCheck=0;
  function smallId(code){
   let h=2166136261;
-  const tail=code.map(x=>x.length+':'+x.slice(0,160)+':'+x.slice(-160)).join('\u0000');
+  const tail=code.join('\u0000');
   for(let i=0;i<tail.length;i++){h^=tail.charCodeAt(i);h=Math.imul(h,16777619);}
   return (h>>>0).toString(36);
  }
@@ -2014,7 +2014,7 @@ try{
  async function check(force=false){
   if(inFlight||document.hidden||navigator.onLine===false)return;
   const now=Date.now();
-  if(!force&&now-lastCheck<30000){attempt();return;}
+  if(now-lastCheck<(force?45000:480000)){attempt();return;}
   inFlight=true;lastCheck=now;
   try{
    const one=await requestVersion();
@@ -2033,6 +2033,6 @@ try{
  document.addEventListener('visibilitychange',()=>{if(!document.hidden)check(true);});
  window.addEventListener('focus',()=>check());
  window.addEventListener('online',()=>check(true));
- setInterval(()=>{if(latest)attempt();else if(!document.hidden)check();},15000);
+ setInterval(()=>{if(latest)attempt();else if(!document.hidden)check();},60000);
 }catch(e){console.warn('ATM: actualizador no disponible',e.message);}
 })();</script><script>if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('./sw.js').catch(console.warn)}</script></body></html>
