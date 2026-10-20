@@ -1945,7 +1945,94 @@ async function cloudInitialize(){
  }
  window.addEventListener('online',()=>cloudRefresh());document.addEventListener('visibilitychange',()=>{if(!document.hidden)cloudRefresh()});cloud.poll=setInterval(()=>{if(!document.hidden)cloudRefresh()},300000);
  }catch(e){console.error(e);error=e.message;render();}}
+/* Chequeo de actualización sólo-lectura; nunca recargar con cambios sin guardar. */
+window.atmCanApplyUpdate=()=>{
+ if(cloud.busy||cloud.loading||cloud.skip||cloud.sessionRestoring||cloud.expiring||cloud.retryPaused)return false;
+ if(dialog||ctx||pending||drag||atmWeekSwipe||atmWeekFinishTimer||atmClock||draft.trim())return false;
+ if(!me){
+  const login=root.querySelector('#login');
+  return !login||![...login.querySelectorAll('input')].some(el=>el.value);
+ }
+ if(!cloud.ready||draftSignature()!==cloud.revision||atmReadOutbox(me.uuid).length)return false;
+ return true;
+};
 cloudInitialize();
 
 })();
-</script><script>if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('./sw.js').catch(console.warn)}</script></body></html>
+</script><script id="atm-version-guard">(()=>{
+'use strict';
+/* Verifica únicamente index.html en GitHub Pages; no modifica datos. */
+try{
+ const ownId='atm-version-guard';
+ const readCode=doc=>{
+  const app=Array.from(doc.querySelectorAll('script')).find(s=>s.textContent.includes("const root=document.querySelector('#app')"));
+  const css=doc.querySelector('head style');
+  const guard=doc.getElementById(ownId);
+  if(!app||!css||!guard||app.textContent.length<10000)return null;
+  return [app.textContent,css.textContent,guard.textContent];
+ };
+ const original=readCode(document);
+ if(!original||!('fetch' in window))return;
+ const same=(a,b)=>!!a&&!!b&&a.length===b.length&&a.every((v,i)=>v===b[i]);
+ const key='atm_version_reload_guard';
+ let inFlight=false,latest=null,lastCheck=0;
+ function smallId(code){
+  let h=2166136261;
+  const tail=code.map(x=>x.length+':'+x.slice(0,160)+':'+x.slice(-160)).join('\u0000');
+  for(let i=0;i<tail.length;i++){h^=tail.charCodeAt(i);h=Math.imul(h,16777619);}
+  return (h>>>0).toString(36);
+ }
+ function canReload(){
+  if(document.hidden||navigator.onLine===false)return false;
+  return typeof window.atmCanApplyUpdate==='function'&&window.atmCanApplyUpdate()===true;
+ }
+ function attempt(){
+  if(!latest||!canReload())return;
+  const targetId=smallId(latest);
+  try{
+   const prior=JSON.parse(sessionStorage.getItem(key)||'null');
+   if(prior&&prior.target===targetId&&Date.now()-prior.time<600000)return;
+   sessionStorage.setItem(key,JSON.stringify({target:targetId,time:Date.now()}));
+  }catch(_){}
+  const dest=new URL(location.href);
+  dest.searchParams.set('atm_actualizacion',targetId+'-'+Date.now().toString(36));
+  location.replace(dest.href);
+ }
+ async function requestVersion(){
+  const u=new URL('./index.html',location.href);
+  u.searchParams.set('atm_verificar',Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),12000);
+  try{
+   const response=await fetch(u.href,{cache:'no-store',credentials:'same-origin',signal:controller.signal});
+   if(!response.ok)return null;
+   const html=await response.text();
+   if(html.length<20000||!html.includes('ATM Manager'))return null;
+   return readCode(new DOMParser().parseFromString(html,'text/html'));
+  }finally{clearTimeout(timeout);}
+ }
+ async function check(force=false){
+  if(inFlight||document.hidden||navigator.onLine===false)return;
+  const now=Date.now();
+  if(!force&&now-lastCheck<30000){attempt();return;}
+  inFlight=true;lastCheck=now;
+  try{
+   const one=await requestVersion();
+   if(!one)return;
+   if(same(original,one)){latest=null;return;}
+   // Una segunda lectura evita adoptar una publicación inestable.
+   const two=await requestVersion();
+   if(!same(one,two))return;
+   latest=two;
+   attempt();
+  }catch(e){console.warn('ATM: comprobación de versión pendiente',e.message);}
+  finally{inFlight=false;}
+ }
+ setTimeout(()=>check(true),1800);
+ window.addEventListener('pageshow',()=>check(true));
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden)check(true);});
+ window.addEventListener('focus',()=>check());
+ window.addEventListener('online',()=>check(true));
+ setInterval(()=>{if(latest)attempt();else if(!document.hidden)check();},15000);
+}catch(e){console.warn('ATM: actualizador no disponible',e.message);}
+})();</script><script>if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('./sw.js').catch(console.warn)}</script></body></html>
