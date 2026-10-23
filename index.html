@@ -491,7 +491,7 @@ function logCard(l){
  return '<div class="log-card atm-log-row'+(chosen?' selected':'')+'"><button type="button" class="atm-log-open" data-a="openlog" data-id="'+l.id+'">'+
   '<span class="log-icon">'+(l.category==='Informar avance'?'📝':l.category==='Reportar problema'?'⚠':'📖')+'</span><span class="log-copy"><span class="log-type '+(logKindClass[l.category]||'')+'">'+esc(logCategoryLabels[l.category]||l.category)+'</span>'+
   '<strong>'+esc(l.vehicle)+'</strong><small>'+esc(l.text.length>135?l.text.slice(0,135)+'…':l.text)+'</small>'+
-  '<small>'+esc(info)+(pr?' · '+esc(pr.name):'')+' · '+esc(logClock(l.ts))+'</small></span><span style="font-weight:850;color:#42735a">›</span></button>'+
+  '<small>'+esc(info)+(pr?' · '+esc(pr.name):'')+' · '+esc(logClock(l.ts))+(l.copySourceDay?' · Copiada del '+esc(fmt(l.copySourceDay)):'')+'</small></span><span style="font-weight:850;color:#42735a">›</span></button>'+
  (hasId?(logSelectMode?
  '<button type="button" class="atm-log-select'+(chosen?' on':'')+'" data-a="atm-log-select-one" data-uuid="'+esc(l.uuid)+'" aria-pressed="'+chosen+'" aria-label="'+(chosen?'Deseleccionar':'Seleccionar')+' registro">'+(chosen?'✓':'□')+'</button>':
  '<button type="button" class="atm-log-bin" data-a="atm-log-delete-one" data-uuid="'+esc(l.uuid)+'" aria-label="Borrar este registro">🗑</button>'):'')+'</div>';
@@ -917,7 +917,19 @@ else if(dialog.type==='logdetail'){
 else if(dialog.type==='chatmenu'||dialog.type==='allmenu'){sheet=true;h='<h3>Opciones de chat</h3>'+(dialog.type==='chatmenu'?'<button class="opt" data-a="viewlogs"><span class="ico">📖</span><span class="grow"><strong>Ver bitácoras</strong><small>Registros técnicos enviados</small></span>›</button><button class="opt" data-a="clearask"><span class="ico">🗑</span><span class="grow"><strong>Vaciar chat</strong><small>Ocultar mensajes de tu cuenta</small></span>›</button>':'<button class="opt" data-a="clearallask"><span class="ico">🗑</span><span class="grow"><strong>Vaciar todos mis chats</strong><small>Solo en esta cuenta</small></span>›</button>')+footer}
 else if(dialog.type==='logs'){const id=me.role==='admin'?thread:me.id;const arr=logs.filter(x=>x.employeeId===id&&x.category==='Registrar bitácora').sort((a,b)=>b.ts-a.ts);h='<h3>Bitácoras</h3>'+(arr.length?arr.map(logCard).join(''):'<div class="card sub">No hay registros enviados.</div>')+footer}
 else if(dialog.type==='clearask'||dialog.type==='clearallask'){h='<h3>¿Vaciar historial?</h3><div class="row">'+footer+'<button class="btn red" data-a="clearconfirm">Sí, vaciar</button></div>'}
-else if(dialog.type==='transfer'){const n=totalDay(dialog.src,dialog.scope),nLogs=atmDayLogsForCopy(dialog.src,dialog.scope).length;h='<h3>'+(dialog.origin==='tasks'?'Copiar o mover día':'Copiar programación')+'</h3><p class="sub">'+n+' tareas de '+esc(fmt(dialog.src))+' hacia '+esc(fmt(dialog.dest))+'. '+(dialog.scope==='all'?'Todos los técnicos.':'Solo '+esc(user(dialog.scope)?.name||'el técnico')+'.')+'</p><p class="sub">La programación existente se conserva. '+(nLogs?'Hay '+nLogs+' bitácora'+(nLogs===1?'':'s')+' de origen que NO se copiarán hasta habilitar una operación segura en el servidor.':'No hay bitácoras de origen para copiar.')+'</p><div class="stack">'+(dialog.origin==='tasks'?'<div class="row"><button class="btn ghost" data-a="copy">Copiar</button><button class="btn" data-a="move">Mover</button></div>':'<button class="btn" data-a="copy">Confirmar copia</button>')+footer+'</div>'}
+else if(dialog.type==='transfer'){
+ const n=totalDay(dialog.src,dialog.scope),nLogs=atmDayLogsForCopy(dialog.src,dialog.scope).length;
+ const scopeName=dialog.scope==='all'?'Todos los técnicos':dialog.scope==='pending'?'Actividades pendientes de asignar':(user(dialog.scope)?.name||'Técnico seleccionado');
+ h='<h3>'+(dialog.origin==='tasks'?'Copiar o mover día':'Copiar programación')+'</h3>'+
+ '<p class="sub"><b>'+n+' actividades y '+nLogs+' bitácoras</b> del '+esc(fmt(dialog.src))+' al '+esc(fmt(dialog.dest))+' · '+esc(scopeName)+'.</p>'+
+ '<p class="sub"><b>Copiar:</b> conserva origen y agrega copias al destino con sus bitácoras. <b>Mover:</b> traslada los originales junto con sus bitácoras. Ningún registro existente en destino se reemplaza.</p>'+
+ (dialog.error?'<div class="alert">'+esc(dialog.error)+'</div>':'')+
+ (dialog.processing?'<p class="sub">Confirmando actividades y bitácoras en Supabase…</p>':'')+
+ '<div class="stack">'+(dialog.origin==='tasks'?
+ '<div class="row"><button type="button" class="btn ghost" data-a="copy" '+(dialog.processing?'disabled':'')+'>Copiar todo</button><button type="button" class="btn" data-a="move" '+(dialog.processing?'disabled':'')+'>Mover todo</button></div>':
+ '<button type="button" class="btn" data-a="copy" '+(dialog.processing?'disabled':'')+'>Confirmar copia completa</button>')+
+ '<button type="button" class="btn ghost" data-a="close" '+(dialog.processing?'disabled':'')+'>Cancelar</button></div>';
+}
 else if(dialog.type==='deleteDay'||dialog.type==='deleteJob'){h='<h3>¿Eliminar programación?</h3><p class="sub">'+(dialog.type==='deleteDay'?'Eliminar '+totalDay(dialog.src,dialog.scope)+' actividades del '+esc(fmt(dialog.src))+'.':'Eliminar la tarea seleccionada.')+'</p><div class="row">'+footer+'<button class="btn red" data-a="deleteconfirm">Eliminar</button></div>'}
 return '<div class="modalwrap '+(sheet?'sheet':'')+(dialog.type==='accountmenu'?' atm-menu-wrap':'')+'"><div class="dialog">'+h+'</div></div>'}
 let historyBooted=false,suppressHistory=false,lastHistoryJSON='',historyRoute='';
@@ -1023,38 +1035,64 @@ function atmCopyDayLogs(originals,destination,bySource){
  if(count)reportLogs();
  return count;
 }
-function transfer(move){
- const d=dialog;
- const arr=onDay(d.src,d.scope).map(x=>({...x,kind:'job'}));
- const booked=bookingsDay(d.src,d.scope).map(x=>({...x,kind:'booking'}));
- // Evitar generar nuevas bitácoras copiadas que RLS rechaza.
- const sourceLogs=[];
- const bySource=new Map(),groups=new Map();
- for(const item of [...arr,...booked]){const g=item.userId??'pending';if(!groups.has(g))groups.set(g,[]);groups.get(g).push(item)}
- for(const [owner,items] of groups){
-  items.sort((a,b)=>(a.order??9999)-(b.order??9999)||a.id-b.id);
-  let destOrder=owner==='pending'?null:schedule(owner,d.dest).length;
-  for(const item of items){
-   if(destOrder!==null)destOrder++;
-   if(item.kind==='job'){
-    if(move){const old=jobs.find(x=>x.id===item.id);if(old){old.day=d.dest;old.order=destOrder}}
-    else{
-     const copy={uuid:crypto.randomUUID(),id:nextJob++,userId:item.userId,day:d.dest,title:item.title,detail:item.detail,order:destOrder};
-     jobs.push(copy);bySource.set('job:'+item.id+':'+item.userId,copy);
-    }
-   }else{
-    if(move){const old=appointments.find(x=>x.id===item.id);if(old){old.day=d.dest;old.order=destOrder}}
-    else{
-     const copy={uuid:crypto.randomUUID(),id:nextAppointment++,userId:item.userId,day:d.dest,vehicle:item.vehicle,instructions:item.instructions,priority:item.priority,serviceType:item.serviceType||'Por definir',serviceOther:item.serviceOther||'',receptionStart:item.receptionStart||null,receptionEnd:item.receptionEnd||null,order:destOrder};
-     appointments.push(copy);bySource.set('booking:'+item.id+':'+item.userId,copy);
-    }
-   }
-  }
-  if(owner!=='pending'){renumber(owner,d.src);renumber(owner,d.dest)}
+/* Copiar/mover programación y bitácoras en una transacción del servidor.
+   No mostrar copias locales que todavía no estén confirmadas. */
+async function transfer(move){
+ const page=dialog;
+ if(!page||page.type!=='transfer'||page.processing||me?.role!=='admin')return;
+ const actor=me.uuid;
+ const scopeType=page.scope==='all'?'all':page.scope==='pending'?'pending':'employee';
+ const scopeEmployee=scopeType==='employee'?uuidFor(Number(page.scope)):null;
+ if(scopeType==='employee'&&!scopeEmployee){
+  page.error='No se pudo identificar al técnico de origen.';overlay.innerHTML=modalHTML();return;
  }
- const copiedLogs=move?0:atmCopyDayLogs(sourceLogs,d.dest,bySource);
- day=d.dest;week=d.dest;closeDialog();render();
- notify(arr.length+booked.length+(move?' actividades movidas':' actividades copiadas')+(!move&&copiedLogs?' · '+copiedLogs+' bitácora'+(copiedLogs===1?'':'s')+' copiada'+(copiedLogs===1?'':'s'):''));
+ if(!cloud.sb||!cloud.ready||cloud.busy||cloud.loading||cloud.retryPaused||
+    atmReadOutbox(actor).length||draftSignature()!==cloud.revision){
+  page.error='Hay registros pendientes de guardar. Confirmá la sincronización antes de copiar o mover.';
+  overlay.innerHTML=modalHTML();return;
+ }
+ const operation=move?'move':'copy';
+ const requestId=page.transferRequestId||(page.transferRequestId=crypto.randomUUID());
+ const source=page.src,destination=page.dest;
+ page.processing=true;page.error='';overlay.innerHTML=modalHTML();
+ clearTimeout(cloud.writeTimer);cloud.busy=true;
+ try{
+  const {data:sessionData,error:sessionError}=await cloud.sb.auth.getSession();
+  if(sessionError||sessionData?.session?.user?.id!==actor)
+   throw new Error('Tu sesión cambió. Volvé a ingresar antes de trasladar registros.');
+  let result=page.remoteResult;
+  if(!result){
+   const {data,error}=await cloud.sb.rpc('atm_transfer_day',{
+    p_source:source,p_destination:destination,p_mode:operation,
+    p_scope_type:scopeType,p_scope_employee:scopeEmployee,p_request_id:requestId
+   });
+   if(error)throw error;
+   if(data?.ok!==true||data.request_id!==requestId||data.mode!==operation||
+      data.source_day!==source||data.destination_day!==destination||
+      !Number.isSafeInteger(data.work_count)||!Number.isSafeInteger(data.log_count))
+    throw new Error('El servidor no confirmó íntegramente la operación.');
+   result=data;
+   page.remoteResult=result;
+  }
+  cloud.busy=false;cloud.ready=false;
+  await cloudLoad();
+  if(!cloud.ready||me?.uuid!==actor)
+   throw new Error('La operación quedó guardada, pero no se pudo actualizar el calendario.');
+  day=destination;week=destination;
+  if(dialog===page)closeDialog();
+  render();
+  notify(result.work_count+' actividades y '+result.log_count+' bitácoras '+(move?'trasladadas':'copiadas')+' en Supabase.');
+ }catch(e){
+  console.error('No se completó el traslado:',e);
+  if(dialog===page){
+   page.error=String(e?.message||'No se pudo confirmar la operación.');
+   if(page.remoteResult)page.error+=' El servidor ya la confirmó; reintentá la actualización.';
+  }
+  if(!cloud.ready)cloud.ready=true;
+ }finally{
+  cloud.busy=false;page.processing=false;
+  if(dialog===page)overlay.innerHTML=modalHTML();
+ }
 }
 
 function removeStuff(){
@@ -1676,12 +1714,12 @@ const rowForMessage = m => {
 function noticeToUI(row,workByUuid){let owner=uiFor(row.target_employee_id),send=uiFor(row.author_id);
  const w=workByUuid.get(row.work_item_id),localCat=row.category==='Respuesta a administración'?'Respuesta a instrucción':row.category;
  const ts=new Date(row.created_at).getTime();let localId=cloud.noticeUiIds.get(row.id);if(!localId){localId=nextMsg++;cloud.noticeUiIds.set(row.id,localId)};
- return {uuid:row.id,id:localId,employeeId:owner,sender:send,category:localCat,vehicle:row.vehicle_caption||w?.vehicle||w?.title||null,text:row.body,allowReply:row.allow_reply,replyUuid:row.reply_to,replyTo:null,taskType:w?('title' in w?'job':'booking'):null,taskId:w?.id||null,workDay:row.work_day||w?.day||null,priority:row.priority_caption||w?.priority||null,taskDetail:row.task_snapshot||w?.instructions||w?.detail||'',ts};
+ return {uuid:row.id,id:localId,employeeId:owner,sender:send,category:localCat,vehicle:row.vehicle_caption||w?.vehicle||w?.title||null,text:row.body,allowReply:row.allow_reply,replyUuid:row.reply_to,replyTo:null,taskType:w?('title' in w?'job':'booking'):null,taskId:w?.id||null,workDay:row.work_day||w?.day||null,priority:row.priority_caption||w?.priority||null,taskDetail:row.task_snapshot||w?.instructions||w?.detail||'',copySourceDay:row.copied_from_work_day||null,copySourceNoticeId:row.copied_from_notice_id||null,ts};
 }
 function reportLogs(){logs=[];nextLog=1;messages.forEach(m=>{if(!['Informar avance','Reportar problema','Registrar bitácora'].includes(m.category))return;
  const w=m.taskType==='job'?jobs.find(x=>x.id===m.taskId):appointments.find(x=>x.id===m.taskId);
  const workDay=m.workDay||w?.day||new Date(m.ts).toISOString().slice(0,10);
- logs.push({uuid:m.uuid,id:nextLog++,employeeId:m.employeeId,workDay,taskType:m.taskType||(m.taskId==null&&m.category==='Registrar bitácora'?'standalone':'booking'),taskId:m.taskId,vehicle:m.vehicle||w?.vehicle||w?.title||'Actividad',taskDetail:m.taskDetail||w?.instructions||w?.detail||'',priority:m.priority||w?.priority||null,category:m.category,text:m.text,ts:m.ts}); });}
+ logs.push({uuid:m.uuid,id:nextLog++,employeeId:m.employeeId,workDay,taskType:m.taskType||(m.taskId==null&&m.category==='Registrar bitácora'?'standalone':'booking'),taskId:m.taskId,vehicle:m.vehicle||w?.vehicle||w?.title||'Actividad',taskDetail:m.taskDetail||w?.instructions||w?.detail||'',priority:m.priority||w?.priority||null,category:m.category,text:m.text,copySourceDay:m.copySourceDay||null,copySourceNoticeId:m.copySourceNoticeId||null,ts:m.ts}); });}
 async function cloudList(table,order){const all=[];for(let offset=0;offset<10000;offset+=500){let q=cloud.sb.from(table).select('*').range(offset,offset+499);if(order)q=q.order(order,{ascending:true});const {data,error}=await q;if(error)throw error;all.push(...(data||[]));if((data||[]).length<500)break;}return all;}
 async function cloudLoad(){if(!cloud.sb||cloud.busy||cloud.loading||!me)return;cloud.loading=true;const priorUuid=me.uuid;try{
  const [profiles,remoteWork,remoteMessages,readResult,remoteCalendar]=await Promise.all([
