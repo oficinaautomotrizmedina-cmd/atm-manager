@@ -522,6 +522,8 @@ function logsHTML(){
  '<div class="row daily-heading"><b style="font-size:13px;color:#173d28">'+esc(fmt(logDay))+'</b><span class="pill">'+daily.length+' '+mode.label+' del día</span></div>'+
  '<div class="log-summary"><div class="log-stat"><b>'+daily.length+'</b><small>'+mode.title+' del día</small></div><div class="log-stat"><b>'+new Set(daily.map(x=>x.employeeId)).size+'</b><small>Técnicos con '+mode.label+'</small></div></div>'+
  (!own?'<div class="log-toolbar"><select id="logperson" aria-label="Filtrar técnico"><option value="all">Todos los técnicos</option>'+members.map(u=>'<option value="'+u.id+'" '+(String(logEmployee)===String(u.id)?'selected':'')+'>'+esc(u.name)+'</option>').join('')+'</select></div>':'')+
+ (me?.role==='admin'&&mode.cat==='Registrar bitácora'&&entries.some(l=>!!l.copySourceNoticeId)?
+ '<button type="button" class="btn ghost" data-a="atm-remove-copied-logs" style="border-color:#d9b4af;color:#943e35">Eliminar solo bitácoras copiadas del día ('+entries.filter(l=>!!l.copySourceNoticeId).length+')</button>':'')+
  logControlsHTML(entries)+
  (entries.length?'<div class="log-list">'+members.filter(u=>entries.some(l=>l.employeeId===u.id)).map(u=>{const mine=entries.filter(l=>l.employeeId===u.id);return '<div class="log-group"><div class="log-grouphead"><span class="avatar" style="width:30px;height:30px">'+esc(u.name[0])+'</span><strong>'+esc(u.name)+'</strong><span class="pill">'+mine.length+' '+mode.label+'</span></div>'+mine.map(logCard).join('')+'</div>'}).join('')+'</div>':
  '<div class="card" style="text-align:center;align-items:center;padding:22px 15px"><span style="font-size:27px">'+mode.icon+'</span><b style="color:#16412e">Sin '+mode.label+' para esta selección</b></div>')+
@@ -930,7 +932,16 @@ else if(dialog.type==='transfer'){
  '<button type="button" class="btn" data-a="copy" '+(dialog.processing?'disabled':'')+'>Confirmar copia completa</button>')+
  '<button type="button" class="btn ghost" data-a="close" '+(dialog.processing?'disabled':'')+'>Cancelar</button></div>';
 }
-else if(dialog.type==='deleteDay'||dialog.type==='deleteJob'){h='<h3>¿Eliminar programación?</h3><p class="sub">'+(dialog.type==='deleteDay'?'Eliminar '+totalDay(dialog.src,dialog.scope)+' actividades del '+esc(fmt(dialog.src))+'.':'Eliminar la tarea seleccionada.')+'</p><div class="row">'+footer+'<button class="btn red" data-a="deleteconfirm">Eliminar</button></div>'}
+else if(['deleteDay','deleteJob','deleteCopiedLogs'].includes(dialog.type)){
+ const found=atmDeletionTargets(dialog),n=found.works.length,nLogs=found.logs.length;
+ h='<h3>'+(dialog.type==='deleteCopiedLogs'?'Eliminar copias de bitácoras':'Eliminar programación')+'</h3>'+
+ '<p class="sub"><b>'+n+' actividades y '+nLogs+' bitácoras copiadas</b>'+(dialog.src?' del '+esc(fmt(dialog.src)):'')+'.</p>'+
+ '<p class="sub">Se eliminarán las actividades seleccionadas y sus bitácoras copiadas. Las bitácoras originales, los nuevos registros técnicos y las demás actividades se conservan.</p>'+
+ (dialog.error?'<div class="alert">'+esc(dialog.error)+'</div>':'')+
+ (dialog.processing?'<p class="sub">Verificando eliminación con el servidor…</p>':'')+
+ '<div class="row"><button type="button" class="btn ghost" data-a="close" '+(dialog.processing?'disabled':'')+'>Cancelar</button>'+
+ '<button type="button" class="btn red" data-a="deleteconfirm" '+(dialog.processing||(!n&&!nLogs)?'disabled':'')+'>Eliminar selección</button></div>';
+}
 return '<div class="modalwrap '+(sheet?'sheet':'')+(dialog.type==='accountmenu'?' atm-menu-wrap':'')+'"><div class="dialog">'+h+'</div></div>'}
 let historyBooted=false,suppressHistory=false,lastHistoryJSON='',historyRoute='';
 let historyGroup=Number(history.state?.atmHistoryGroup)||0,highlightNotice=null,highlightWork=null;
@@ -1091,17 +1102,98 @@ async function transfer(move){
  }
 }
 
-function removeStuff(){
- const d=dialog;
- if(d.type==='deleteJob'){
-  const j=jobs.find(x=>x.id===d.id);jobs=jobs.filter(x=>x.id!==d.id);if(j)renumber(j.userId,j.day);
- }else{
-  const affected=[...new Set([...onDay(d.src,d.scope),...bookingsDay(d.src,d.scope)].map(x=>x.userId).filter(x=>x!=null))];
-  jobs=jobs.filter(j=>!(j.day===d.src&&(d.scope==='all'||j.userId===Number(d.scope))));
-  appointments=appointments.filter(a=>!(a.day===d.src&&(d.scope==='all'||(d.scope==='pending'?a.userId===null:a.userId===Number(d.scope)))));
-  for(const id of affected)renumber(id,d.src);
+/* Eliminar exclusivamente las bitácoras copiadas junto a la programación.
+   Nunca incluir bitácoras originales o nuevas del técnico en esta selección. */
+function atmCopiedLogsForRemoval(date,scope,workId=null){
+ return messages.filter(m=>{
+  if(m.category!=='Registrar bitácora'||m.workDay!==date||
+     !m.uuid||!m.copySourceNoticeId||!cloud.lastNotice.has(m.uuid))return false;
+  if(workId!==null)return m.taskType==='job'&&m.taskId===workId;
+  if(scope==='all')return true;
+  if(scope==='pending'||scope==='none')return false;
+  return m.employeeId===Number(scope);
+ });
+}
+function atmDeletionTargets(page){
+ if(page.type==='deleteCopiedLogs')return {works:[],logs:atmCopiedLogsForRemoval(page.src,page.scope)};
+ if(page.type==='deleteJob'){
+  const job=jobs.find(j=>j.id===page.id);
+  return {works:job?[job]:[],logs:job?atmCopiedLogsForRemoval(job.day,'all',job.id):[]};
  }
- closeDialog();render();notify('Programación eliminada');
+ return {
+  works:[...onDay(page.src,page.scope),...bookingsDay(page.src,page.scope)],
+  logs:atmCopiedLogsForRemoval(page.src,page.scope)
+ };
+}
+async function removeStuff(){
+ const page=dialog;
+ if(!page||!['deleteDay','deleteJob','deleteCopiedLogs'].includes(page.type)||
+    page.processing||me?.role!=='admin')return;
+ if(!cloud.sb||!cloud.ready||cloud.busy||cloud.loading||cloud.retryPaused||
+    atmReadOutbox(me.uuid).length||draftSignature()!==cloud.revision){
+  page.error='Hay registros pendientes de sincronizar. Esperá a que se guarden antes de eliminar.';
+  overlay.innerHTML=modalHTML();return;
+ }
+ const targets=atmDeletionTargets(page);
+ const workIds=[...new Set(targets.works.map(w=>w.uuid))];
+ const logIds=[...new Set(targets.logs.map(m=>m.uuid))];
+ if(workIds.some(x=>!x)||logIds.some(x=>!x)||logIds.length>5000){
+  page.error='La selección no pudo verificarse. Actualizá los registros antes de continuar.';
+  overlay.innerHTML=modalHTML();return;
+ }
+ if(!workIds.length&&!logIds.length){
+  page.error='Ya no quedan actividades ni bitácoras copiadas en esta selección.';
+  overlay.innerHTML=modalHTML();return;
+ }
+ page.processing=true;page.error='';overlay.innerHTML=modalHTML();
+ const actor=me.uuid;
+ clearTimeout(cloud.writeTimer);cloud.busy=true;
+ let remoteChanged=false,finished=false,removedLogs=0;
+ try{
+  const {data,error:sessionError}=await cloud.sb.auth.getSession();
+  if(sessionError||!data?.session?.access_token||data.session.user?.id!==actor)
+   throw new Error('Tu sesión cambió. Volvé a ingresar.');
+  const token=data.session.access_token;
+  if(logIds.length){
+   const equalIds=(a,b)=>Array.isArray(a)&&a.length===b.length&&
+     new Set(a).size===b.length&&b.every(id=>a.includes(id));
+   const preview=await cloudAPI({action:'logs_preview',mode:'ids',ids:logIds},token);
+   if(!preview?.ok||preview.count!==logIds.length||!equalIds(preview.ids,logIds))
+    throw new Error('Las bitácoras cambiaron en el servidor. No se eliminó la programación.');
+   const deleted=await cloudAPI({
+    action:'logs_delete',mode:'ids',ids:logIds,expected_ids:preview.ids,confirm:'ELIMINAR'
+   },token);
+   remoteChanged=true;
+   if(!deleted?.ok||deleted.deleted!==true||deleted.count!==logIds.length||
+      !equalIds(deleted.ids,logIds))
+    throw new Error('El servidor no confirmó por completo las bitácoras eliminadas.');
+   removedLogs=deleted.count;
+  }
+  if(workIds.length){
+   const {error}=await cloud.sb.from('atm_work_items').delete().in('id',workIds);
+   if(error)throw error;
+   remoteChanged=true;
+  }
+  finished=true;
+ }catch(e){
+  page.error=String(e?.message||'No se pudo completar la eliminación.');
+  if(remoteChanged&&!finished)page.error+=' Se actualizará la vista con los registros confirmados para poder reintentar.';
+  console.error('Error al eliminar programación con bitácoras copiadas:',e);
+ }finally{
+  cloud.busy=false;page.processing=false;
+  if(remoteChanged){
+   const loaded=await cloudLoad();
+   if(!loaded){
+    finished=false;
+    page.error='Se enviaron cambios al servidor, pero no se pudo verificar la vista actual. Revisá la conexión y volvé a abrir la aplicación.';
+   }
+  }
+  if(finished){
+   if(dialog===page)closeDialog();
+   render();
+   notify(workIds.length+' actividades y '+removedLogs+' bitácoras copiadas eliminadas. Los originales permanecen.');
+  }else if(dialog===page)overlay.innerHTML=modalHTML();
+ }
 }
 
 function clearChats(){
@@ -1510,7 +1602,7 @@ if(a==='select-standalone'&&me?.role!=='admin'&&dialog?.category==='Registrar bi
  if(record){ctx={category:'Registrar bitácora',vehicle,jobId:'s'+vehicle.toLocaleLowerCase('es-SV'),taskType:'standalone',taskId:null,taskDetail:'',workDay:TODAY,priority:null,standalone:true};draft=drafts[me.id+':'+ctx.jobId]||'';showDialog({type:'logeditor'})}
  return;
 }
-if(a==='selectbooking'){const ap=appointments.find(x=>x.id===Number(b.dataset.booking)&&x.userId===me.id);if(ap){ctx={category:dialog.category,vehicle:ap.vehicle,jobId:'a'+ap.id,bookingId:ap.id,taskType:'booking',taskId:ap.id,taskDetail:ap.instructions,workDay:ap.day,priority:ap.priority};draft=dialog.category==='Registrar bitácora'?drafts[me.id+':'+ctx.jobId]||'':'';if(dialog.category==='Registrar bitácora')showDialog({type:'logeditor'});else{closeDialog();render()}}return}if(a==='selectcar'){const j=jobs.find(x=>x.id===Number(b.dataset.job)&&x.userId===me.id);if(j){ctx={category:dialog.category,vehicle:j.title,jobId:j.id,taskType:'job',taskId:j.id,taskDetail:j.detail,workDay:j.day,priority:null};draft=dialog.category==='Registrar bitácora'?drafts[me.id+':'+j.id]||'':'';if(dialog.category==='Registrar bitácora')showDialog({type:'logeditor'});else{closeDialog();render()}}return}if(a==='clearctx'){ctx=null;draft='';render();return}if(a==='savedraft'){if(ctx?.jobId)drafts[me.id+':'+ctx.jobId]=draft;ctx=null;draft='';render();notify('Bitácora guardada como borrador');return}if(a==='chatmenu'||a==='allmenu'){showDialog({type:a});return}if(a==='viewlogs'){showDialog({type:'logs'});return}if(a==='clearask'||a==='clearallask'){showDialog({type:a});return}if(a==='clearconfirm'){clearChats();return}if(a==='copy'||a==='move'){transfer(a==='move');return}if(a==='deleteconfirm'){removeStuff();return}});
+if(a==='selectbooking'){const ap=appointments.find(x=>x.id===Number(b.dataset.booking)&&x.userId===me.id);if(ap){ctx={category:dialog.category,vehicle:ap.vehicle,jobId:'a'+ap.id,bookingId:ap.id,taskType:'booking',taskId:ap.id,taskDetail:ap.instructions,workDay:ap.day,priority:ap.priority};draft=dialog.category==='Registrar bitácora'?drafts[me.id+':'+ctx.jobId]||'':'';if(dialog.category==='Registrar bitácora')showDialog({type:'logeditor'});else{closeDialog();render()}}return}if(a==='selectcar'){const j=jobs.find(x=>x.id===Number(b.dataset.job)&&x.userId===me.id);if(j){ctx={category:dialog.category,vehicle:j.title,jobId:j.id,taskType:'job',taskId:j.id,taskDetail:j.detail,workDay:j.day,priority:null};draft=dialog.category==='Registrar bitácora'?drafts[me.id+':'+j.id]||'':'';if(dialog.category==='Registrar bitácora')showDialog({type:'logeditor'});else{closeDialog();render()}}return}if(a==='clearctx'){ctx=null;draft='';render();return}if(a==='savedraft'){if(ctx?.jobId)drafts[me.id+':'+ctx.jobId]=draft;ctx=null;draft='';render();notify('Bitácora guardada como borrador');return}if(a==='chatmenu'||a==='allmenu'){showDialog({type:a});return}if(a==='viewlogs'){showDialog({type:'logs'});return}if(a==='clearask'||a==='clearallask'){showDialog({type:a});return}if(a==='clearconfirm'){clearChats();return}if(a==='copy'||a==='move'){transfer(a==='move');return}if(a==='atm-remove-copied-logs'&&me?.role==='admin'&&tab==='logs'){showDialog({type:'deleteCopiedLogs',src:logDay,scope:logEmployee});return}if(a==='deleteconfirm'){removeStuff();return}});
 root.addEventListener('submit',e=>{e.preventDefault();const f=e.target;if(f.id==='login'){const d=new FormData(f);doLogin(d.get('username'),d.get('password'));return}if(f.id==='userform'){const d=new FormData(f),name=String(d.get('name')||'').trim(),username=String(d.get('username')||'').trim(),password=String(d.get('password')||''),old=user(dialog.id),dupe=users.some(u=>u.username.toLowerCase()===username.toLowerCase()&&u.id!==old?.id);const err=overlay.querySelector('#usererror');if(!name||!/^[a-z0-9._-]+$/i.test(username)||dupe||(!old&&password.length<6)||(old&&password&&password.length<6)){err.style.display='block';err.textContent='Verificá los datos: usuario único sin espacios y contraseña mínima de 6 caracteres.';return}if(old){old.name=name;old.username=username;if(password)old.password=password;old.role=d.get('role');old.active=d.get('active')==='true';closeDialog();render();notify('Cuenta actualizada')}else{users.push({id:nextUser++,name,username,password,role:d.get('role'),active:true});saveDemo();showDialog({type:'created',username,password})}return}if(f.id==='notetaskform'){if(me?.role!=='admin')return;const d=new FormData(f);sendTaskNote(dialog.taskType,dialog.taskId,String(d.get('text')||''),d.get('allowReply')==='on');return}if(f.id==='bookingform'){
  if(me?.role!=='admin')return;
  const form=new FormData(f),vehicle=String(form.get('vehicle')||'').trim(),instructions=String(form.get('instructions')||'').trim(),assignedRaw=String(form.get('assigned')||''),assigned=assignedRaw===''?null:Number(assignedRaw),priority=String(form.get('priority')||''),serviceType=String(form.get('serviceType')||'Por definir'),serviceOther=String(form.get('serviceOther')||'').trim(),receptionStart=String(form.get('receptionStart')||'').trim(),receptionEnd=String(form.get('receptionEnd')||'').trim();
@@ -1734,8 +1826,8 @@ async function cloudLoad(){if(!cloud.sb||cloud.busy||cloud.loading||!me)return;c
   cloud.readNoticeIds=new Set([...cloud.readNoticeIds,...(readResult.data||[]).map(r=>r.notice_id)]);
   calendarChanges=(remoteCalendar||[]).filter(c=>c.recipient_id===priorUuid);
  cloud.lastWork=new Map(localWorkRows().map(({item,kind})=>[item.uuid,JSON.stringify(rowForWork(item,kind))]));cloud.lastNotice=new Set(messages.map(x=>x.uuid));cloud.revision=draftSignature();cloud.lastRemoteLoadAt=Date.now();cloud.ready=true;cloud.skip=false;
- if(me&&tab==='users'&&me.role!=='admin')tab='calendar';render(true);
- }catch(e){console.error('No se pudo descargar la información',e);busyStatus('Sin sincronizar · Revisá tu conexión');}finally{cloud.skip=false;cloud.loading=false;}}
+ if(me&&tab==='users'&&me.role!=='admin')tab='calendar';render(true);return true;
+ }catch(e){console.error('No se pudo descargar la información',e);busyStatus('Sin sincronizar · Revisá tu conexión');return false;}finally{cloud.skip=false;cloud.loading=false;}}
 async function cloudWrite(){
  if(!cloud.ready||!me||cloud.busy||cloud.loading||cloud.retryPaused||cloud.expiring)return;
  if(!atmQuarantineAdminCopies())return;
