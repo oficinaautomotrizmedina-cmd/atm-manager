@@ -911,7 +911,7 @@ else if(dialog.type==='logdetail'){
  h=l?'<div class="row"><div><div class="overline">REGISTRO DEL '+esc(fmt(l.workDay).toUpperCase())+'</div><h3>Detalle de '+esc(l.category==='Informar avance'?'avance':l.category==='Reportar problema'?'problema':'bitácora')+'</h3></div><span style="font-size:25px">📖</span></div>'+
  '<div class="log-detail-content"><div class="row"><b style="font-size:13px;color:#153b29">'+esc(l.vehicle)+'</b><span class="log-type '+(logKindClass[l.category]||'')+'">'+esc(logCategoryLabels[l.category]||l.category)+'</span></div>'+
  '<div class="sub"><b>Técnico:</b> '+esc(owner?.name||'Cuenta anterior')+'</div><div class="sub"><b>Actividad:</b> '+esc(l.taskType==='standalone'?'Registro sin agendamiento':l.taskType==='booking'?'Vehículo agendado':'Tarea interna')+(pr?' · '+esc(pr.name):'')+'</div>'+
- '<div class="sub"><b>Indicaciones:</b> '+esc(l.taskDetail||'Sin indicaciones adicionales')+'</div><div class="sub"><b>Fecha de trabajo:</b> '+esc(fmt(l.workDay))+'</div><div class="sub"><b>Enviado:</b> '+esc(new Date(l.ts).toLocaleString('es-SV',{timeZone:'America/El_Salvador',dateStyle:'medium',timeStyle:'short'}))+'</div></div>'+
+ '<div class="sub"><b>Indicaciones:</b> '+esc(l.taskDetail||'Sin indicaciones adicionales')+'</div><div class="sub"><b>Fecha de trabajo:</b> '+esc(fmt(l.workDay))+'</div>'+(l.copySourceDay?'<div class="sub"><b>Registro copiado del:</b> '+esc(fmt(l.copySourceDay))+'</div>':'')+'<div class="sub"><b>Enviado:</b> '+esc(new Date(l.ts).toLocaleString('es-SV',{timeZone:'America/El_Salvador',dateStyle:'medium',timeStyle:'short'}))+'</div></div>'+
  '<div class="log-detail-content"><strong style="font-size:12px;color:#12422c">Registro escrito</strong><p>'+esc(l.text)+'</p></div><button class="btn" data-a="close">Cerrar registro</button>':'<div class="card sub">Registro no disponible</div>'+footer;
 }
 else if(dialog.type==='chatmenu'||dialog.type==='allmenu'){sheet=true;h='<h3>Opciones de chat</h3>'+(dialog.type==='chatmenu'?'<button class="opt" data-a="viewlogs"><span class="ico">📖</span><span class="grow"><strong>Ver bitácoras</strong><small>Registros técnicos enviados</small></span>›</button><button class="opt" data-a="clearask"><span class="ico">🗑</span><span class="grow"><strong>Vaciar chat</strong><small>Ocultar mensajes de tu cuenta</small></span>›</button>':'<button class="opt" data-a="clearallask"><span class="ico">🗑</span><span class="grow"><strong>Vaciar todos mis chats</strong><small>Solo en esta cuenta</small></span>›</button>')+footer}
@@ -1015,26 +1015,6 @@ function atmDayLogsForCopy(source,scope){
   return linked.has(x.taskType+':'+x.taskId+':'+x.employeeId);
  });
 }
-function atmCopyDayLogs(originals,destination,bySource){
- let count=0;
- const now=Date.now();
- for(const l of originals){
-  const copied=l.taskType==='standalone'?null:bySource.get(l.taskType+':'+l.taskId+':'+l.employeeId);
-  if(l.taskType!=='standalone'&&!copied)continue;
-  // Registrar las copias como administrador, sin suplantar al empleado original.
-  if(!uuidFor(l.employeeId)||!me?.id)continue;
-  messages.push({
-   uuid:crypto.randomUUID(),id:nextMsg++,employeeId:l.employeeId,sender:me.id,
-   category:'Registrar bitácora',vehicle:l.vehicle||copied?.vehicle||copied?.title||null,
-   text:l.text,ts:now+count,allowReply:false,replyTo:null,
-   taskType:l.taskType,taskId:copied?.id??null,workDay:destination,
-   taskDetail:l.taskDetail||'',priority:l.priority||null
-  });
-  count++;
- }
- if(count)reportLogs();
- return count;
-}
 /* Copiar/mover programación y bitácoras en una transacción del servidor.
    No mostrar copias locales que todavía no estén confirmadas. */
 async function transfer(move){
@@ -1056,9 +1036,18 @@ async function transfer(move){
   page.error='La operación anterior debe confirmarse antes de cambiar de Copiar a Mover, o viceversa.';
   overlay.innerHTML=modalHTML();return;
  }
- const requestId=page.transferRequestId||(page.transferRequestId=crypto.randomUUID());
- page.transferMode=operation;
  const source=page.src,destination=page.dest;
+ // Keep the same operation UUID even if the app is restarted after a
+ // network response is lost. Do not overwrite any previous attempt.
+ const attemptKey='atm_day_transfer_request_'+actor+'_'+source+'_'+destination+'_'+String(page.scope)+'_'+operation;
+ let requestId=page.transferRequestId;
+ if(!requestId){
+  try{const old=localStorage.getItem(attemptKey);if(old&&/^[0-9a-f-]{36}$/i.test(old))requestId=old;}catch(_){}
+  if(!requestId)requestId=crypto.randomUUID();
+ }
+ page.transferRequestId=requestId;page.transferMode=operation;
+ try{localStorage.setItem(attemptKey,requestId);}
+ catch(e){page.error='No se pudo guardar un identificador seguro para reintentar. Revisá el almacenamiento del dispositivo.';overlay.innerHTML=modalHTML();return;}
  page.processing=true;page.error='';overlay.innerHTML=modalHTML();
  clearTimeout(cloud.writeTimer);cloud.busy=true;
  try{
@@ -1083,6 +1072,8 @@ async function transfer(move){
   await cloudLoad();
   if(!cloud.ready||me?.uuid!==actor)
    throw new Error('La operación quedó guardada, pero no se pudo actualizar el calendario.');
+  // Only release the retry key after the server and the refreshed calendar agree.
+  try{if(localStorage.getItem(attemptKey)===requestId)localStorage.removeItem(attemptKey);}catch(_){}
   day=destination;week=destination;
   if(dialog===page)closeDialog();
   render();
