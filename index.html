@@ -401,6 +401,7 @@ function pendingPanel(d,adminCanEdit=false){const arr=pendingBookings(d);if(!arr
  return '<div class="pending-box"><div class="row"><span class="pending-header">◷ PENDIENTES DE ASIGNAR</span><span class="pill">'+arr.length+' vehículos</span></div>'+arr.map(a=>bookingHTML(a,adminCanEdit,null,false)).join('')+'</div>';
 }
 
+let atmSessionBooting=true;
 let me=null,tab='calendar',employee=null,thread=null,day=BASE,week=BASE,filter='all',logDay=BASE,logWeek=BASE,logEmployee='all',logCategory='Registrar bitácora',logSelectMode=false,logSelected=new Set(),logHoldDay=null,logHoldTimer=null,logIgnoreDayClickUntil=0,monthCursor=BASE,dialog=null,ctx=null,draft='',adminAllowReply=false,error='',seen={},readBy={},drag=null,pending=null,toastTimer=null,blockedClick=0;
 function saveDemo(){cloudChange();}
 function restoreDemo(){}
@@ -533,6 +534,9 @@ function showDialog(o){dialog=o;overlay.innerHTML=modalHTML();syncHistory();}
 function closeDialog(){atmClockDismiss();const wasOpen=!!dialog;dialog=null;overlay.innerHTML='';if(wasOpen&&historyBooted&&!suppressHistory)syncHistory(true);}
 function doLogin(u,p){return cloudLogin(u,p)}
 function logout(){me=null;tab='calendar';employee=null;thread=null;ctx=null;draft='';closeDialog();saveDemo();render()}
+function atmRestoreViewHTML(){return '<div role="status" aria-live="polite" style="padding:30px 20px;text-align:center;color:#19513a;font-size:15px">Recuperando sesión de ATM Manager…</div>'}
+function atmSessionWasActive(){try{return localStorage.getItem('atm_session_expected')==='1'}catch(_){return false}}
+function atmRememberSession(active){try{if(active)localStorage.setItem('atm_session_expected','1');else localStorage.removeItem('atm_session_expected')}catch(_){}}
 function loginHTML(){return '<div class="page login">'+logoIMG('loginlogo')+'<div style="text-align:center">'+heading('Ingresar a ATM Manager','AUTOMOTRIZ MEDINA SV')+'</div><form class="card" id="login"><label class="field">Usuario<input name="username" autocomplete="username" required></label><label class="field">Contraseña<input name="password" type="password" autocomplete="current-password" required></label>'+(error?'<div class="alert">'+esc(error)+'</div>':'')+'<button class="btn" type="submit">Ingresar</button></form></div>'}
 function usersHTML(){const list=users.slice().sort((a,b)=>a.name.localeCompare(b.name,'es'));return '<div class="page">'+heading('Usuarios','ADMINISTRACIÓN DE CUENTAS')+'<button class="btn" data-a="newuser">＋ Crear usuario</button><div class="row"><b>Cuentas registradas</b><span class="pill">'+list.length+' cuentas</span></div><div class="stack">'+list.map(u=>'<button class="item" data-a="edituser" data-id="'+u.id+'"><span class="avatar">'+esc(u.name.charAt(0))+'</span><span class="details"><strong>'+esc(u.name)+'</strong><small>Usuario: '+esc(u.username)+' · '+roleLabel(u.role)+' · '+(u.active?'Activo':'Inactivo')+'</small></span>›</button>').join('')+'</div></div>'}
 function weekSlideHTML(anchor,scope,offset){
@@ -931,7 +935,7 @@ window.addEventListener('popstate',e=>{
 });
 
 function drawMain(keep=false){let scroll=keep?main.scrollTop:0;const isDetail=me&&tab==='chat'&&(me.role!=='admin'||thread);if(isDetail)markRead(me.role==='admin'?thread:me.id);
-head.style.display=isDetail?'none':'flex';main.innerHTML=!me?loginHTML():tab==='users'?usersHTML():tab==='logs'?logsHTML():tab==='tasks'?tasksHTML():tab==='calendar'?calendarHTML():isDetail?chatHTML():inboxHTML();main.scrollTop=scroll;
+head.style.display=isDetail?'none':'flex';main.innerHTML=!me?(atmSessionBooting||cloud.sessionRestoring?atmRestoreViewHTML():loginHTML()):tab==='users'?usersHTML():tab==='logs'?logsHTML():tab==='tasks'?tasksHTML():tab==='calendar'?calendarHTML():isDetail?chatHTML():inboxHTML();main.scrollTop=scroll;
 const msgs=main.querySelector('#messages');
 if(msgs){
  const notice=highlightNotice?[...msgs.querySelectorAll('[data-notice-uuid]')].find(el=>el.dataset.noticeUuid===highlightNotice):null;
@@ -1778,7 +1782,7 @@ async function cloudLogin(username,password){error='';busyStatus('Ingresando…'
  finally{cloud.sessionRestoring=false;}}
 async function cloudAfterLogin(id){const {data,error:e}=await cloud.sb.from('atm_profiles').select('*').eq('user_id',id).maybeSingle();if(e||!data?.active)throw e||new Error('La cuenta no está activa');
  cloud.userIds.set(id,1);me={uuid:id,id:1,username:data.username,name:data.display_name,role:data.role,active:data.active,is_master:data.is_master};
- tab='calendar';day=initialWorkDay;week=initialWorkDay;filter='all';employee=null;thread=null;ctx=null;dialog=null;draft='';cloud.ready=false;loadUIReadState();cloud.retryPaused=false;cloud.expiring=false;await cloudLoad();if(historyBooted)syncHistory(true);await atmDeliverPending();cloudSubscribe();
+ tab='calendar';day=initialWorkDay;week=initialWorkDay;filter='all';employee=null;thread=null;ctx=null;dialog=null;draft='';cloud.ready=false;loadUIReadState();cloud.retryPaused=false;cloud.expiring=false;await cloudLoad();if(historyBooted)syncHistory(true);await atmDeliverPending();cloudSubscribe();atmRememberSession(true);
  setTimeout(()=>atmPushOnLogin(),0);
  const params=new URLSearchParams(location.search),noticeId=params.get('aviso'),workId=params.get('trabajo');
  let opened=false;
@@ -1795,7 +1799,7 @@ async function cloudAfterLogin(id){const {data,error:e}=await cloud.sb.from('atm
   lastHistoryJSON=JSON.stringify(snapshotState());
  }
 }
-async function cloudLogout(){atmRememberPending();await atmPushOnLogout();clearTimeout(cloud.writeTimer);if(cloud.busy)await new Promise(r=>setTimeout(r,800));cloud.ready=false;if(cloud.realtime)await cloud.sb.removeChannel(cloud.realtime);cloud.realtime=null;await cloud.sb.auth.signOut();me=null;users=[];jobs=[];appointments=[];messages=[];logs=[];dialog=null;tab='calendar';error='';seen={};readBy={};cloud.lastWork=new Map();cloud.lastNotice=new Set();cloud.readNoticeIds=new Set();cloud.readCalendarIds=new Set();calendarChanges=[];cloud.userIds=new Map();cloud.workUiIds=new Map();cloud.noticeUiIds=new Map();busyStatus('');render();}
+async function cloudLogout(){atmRememberPending();await atmPushOnLogout();clearTimeout(cloud.writeTimer);if(cloud.busy)await new Promise(r=>setTimeout(r,800));cloud.ready=false;if(cloud.realtime)await cloud.sb.removeChannel(cloud.realtime);cloud.realtime=null;await cloud.sb.auth.signOut();atmRememberSession(false);me=null;users=[];jobs=[];appointments=[];messages=[];logs=[];dialog=null;tab='calendar';error='';seen={};readBy={};cloud.lastWork=new Map();cloud.lastNotice=new Set();cloud.readNoticeIds=new Set();cloud.readCalendarIds=new Set();calendarChanges=[];cloud.userIds=new Map();cloud.workUiIds=new Map();cloud.noticeUiIds=new Map();busyStatus('');render();}
 let refreshTimeout;
 function cloudSubscribe(){if(cloud.realtime)cloud.sb.removeChannel(cloud.realtime);cloud.realtime=cloud.sb.channel('atm-global-v30-2').on('postgres_changes',{event:'*',schema:'public',table:'atm_work_items'},()=>cloudRefresh()).on('postgres_changes',{event:'*',schema:'public',table:'atm_notices'},()=>cloudRefresh()).on('postgres_changes',{event:'*',schema:'public',table:'atm_profiles'},()=>cloudRefresh()).on('postgres_changes',{event:'*',schema:'public',table:'atm_calendar_changes'},()=>cloudRefresh()).subscribe();}
 /* Batch rapid Realtime events into one refresh and cap redundant full-table loads.
@@ -1924,7 +1928,7 @@ async function cloudInitialize(){
    cloud.sessionRestoring=true;
    try{await cloudAfterLogin(restoreId);busyStatus('');error='';}
    catch(e){console.warn('Restauración de sesión pendiente',e);}
-   finally{cloud.sessionRestoring=false;}
+   finally{cloud.sessionRestoring=false;if(!me&&!atmSessionBooting)render();}
   },0);
  }
 });
@@ -1942,13 +1946,32 @@ async function cloudInitialize(){
   }finally{cloud.sessionRestoring=false;}
  }else{
   if(sessionError)console.warn('Sesión no recuperada',sessionError.message);
-  render();
+  // La sesión puede rehidratarse después de una primera lectura vacía al reabrir la PWA.
+  // Evitar el formulario mientras la restauración continúa y comprobar una segunda vez.
+  if(!me&&!cloud.sessionRestoring){
+   await new Promise(resolve=>setTimeout(resolve,atmSessionWasActive()?2000:350));
+   if(!me&&!cloud.sessionRestoring){
+    let recoveredId=null;
+    try{
+     const {data:again,error:againError}=await cloud.sb.auth.getSession();
+     if(againError)console.warn('Segunda comprobación de sesión',againError.message);
+     recoveredId=again?.session?.user?.id||null;
+    }catch(checkError){console.warn('Comprobación de sesión pendiente',checkError.message)}
+    if(recoveredId){
+     cloud.sessionRestoring=true;
+     try{await cloudAfterLogin(recoveredId);error='';}
+     catch(restoreError){console.warn('No se pudo completar la recuperación de sesión',restoreError);error='La conexión falló temporalmente. Actualizá para reintentar.';}
+     finally{cloud.sessionRestoring=false;}
+    }
+   }
+  }
  }
  window.addEventListener('online',()=>cloudRefresh());document.addEventListener('visibilitychange',()=>{if(!document.hidden)cloudRefresh()});cloud.poll=setInterval(()=>{if(!document.hidden)cloudRefresh()},300000);
- }catch(e){console.error(e);error=e.message;render();}}
+ }catch(e){console.error(e);error=e.message;}
+ finally{atmSessionBooting=false;if(!me&&!cloud.sessionRestoring)render();}}
 /* Chequeo de actualización sólo-lectura; nunca recargar con cambios sin guardar. */
 window.atmCanApplyUpdate=()=>{
- if(cloud.busy||cloud.loading||cloud.skip||cloud.sessionRestoring||cloud.expiring||cloud.retryPaused)return false;
+ if(atmSessionBooting||cloud.busy||cloud.loading||cloud.skip||cloud.sessionRestoring||cloud.expiring||cloud.retryPaused)return false;
  if(dialog||ctx||pending||drag||atmWeekSwipe||atmWeekFinishTimer||atmClock||draft.trim())return false;
  if(!me){
   const login=root.querySelector('#login');
@@ -1995,7 +2018,8 @@ try{
    if(prior&&prior.target===targetId&&Date.now()-prior.time<600000)return;
    sessionStorage.setItem(key,JSON.stringify({target:targetId,time:Date.now()}));
   }catch(_){}
-  const dest=new URL(location.href);
+  // Recargar el HTML canónico verificado, nunca una URL de inicio potencialmente vieja.
+  const dest=new URL('./index.html',location.href);
   dest.searchParams.set('atm_actualizacion',targetId+'-'+Date.now().toString(36));
   location.replace(dest.href);
  }
@@ -2015,7 +2039,7 @@ try{
  async function check(force=false){
   if(inFlight||document.hidden||navigator.onLine===false)return;
   const now=Date.now();
-  if(now-lastCheck<(force?45000:480000)){attempt();return;}
+  if(now-lastCheck<(force?12000:480000)){attempt();return;}
   inFlight=true;lastCheck=now;
   try{
    const one=await requestVersion();
