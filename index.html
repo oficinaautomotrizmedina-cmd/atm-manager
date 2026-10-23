@@ -1884,7 +1884,7 @@ async function cloudLoad(){if(!cloud.sb||cloud.busy||cloud.loading||!me)return;c
  me=users.find(x=>x.uuid===priorUuid)||null;
  const workByUuid=new Map();jobs=[];appointments=[];
  for(const row of remoteWork){const item=uiForWork(row);workByUuid.set(row.id,item);if(row.kind==='job')jobs.push(item);else appointments.push(item)}
- messages=remoteMessages.map(row=>noticeToUI(row,workByUuid));const byUuid=new Map(messages.map(m=>[m.uuid,m.id]));messages.forEach(m=>{m.replyTo=m.replyUuid?(byUuid.get(m.replyUuid)||null):null;});reportLogs();
+ messages=remoteMessages.filter(row=>me?.role==='admin'||!row.copied_from_notice_id).map(row=>noticeToUI(row,workByUuid));const byUuid=new Map(messages.map(m=>[m.uuid,m.id]));messages.forEach(m=>{m.replyTo=m.replyUuid?(byUuid.get(m.replyUuid)||null):null;});reportLogs();
   cloud.readNoticeIds=new Set([...cloud.readNoticeIds,...(readResult.data||[]).map(r=>r.notice_id)]);
   calendarChanges=(remoteCalendar||[]).filter(c=>c.recipient_id===priorUuid);
  cloud.lastWork=new Map(localWorkRows().map(({item,kind})=>[item.uuid,JSON.stringify(rowForWork(item,kind))]));cloud.lastNotice=new Set(messages.map(x=>x.uuid));cloud.revision=draftSignature();cloud.lastRemoteLoadAt=Date.now();cloud.ready=true;cloud.skip=false;
