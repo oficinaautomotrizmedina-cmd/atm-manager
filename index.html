@@ -1046,13 +1046,18 @@ async function transfer(move){
  if(scopeType==='employee'&&!scopeEmployee){
   page.error='No se pudo identificar al técnico de origen.';overlay.innerHTML=modalHTML();return;
  }
- if(!cloud.sb||!cloud.ready||cloud.busy||cloud.loading||cloud.retryPaused||
-    atmReadOutbox(actor).length||draftSignature()!==cloud.revision){
+ if(!page.remoteResult&&(!cloud.sb||!cloud.ready||cloud.busy||cloud.loading||cloud.retryPaused||
+    atmReadOutbox(actor).length||draftSignature()!==cloud.revision)){
   page.error='Hay registros pendientes de guardar. Confirmá la sincronización antes de copiar o mover.';
   overlay.innerHTML=modalHTML();return;
  }
  const operation=move?'move':'copy';
+ if(page.transferRequestId&&page.transferMode!==operation){
+  page.error='La operación anterior debe confirmarse antes de cambiar de Copiar a Mover, o viceversa.';
+  overlay.innerHTML=modalHTML();return;
+ }
  const requestId=page.transferRequestId||(page.transferRequestId=crypto.randomUUID());
+ page.transferMode=operation;
  const source=page.src,destination=page.dest;
  page.processing=true;page.error='';overlay.innerHTML=modalHTML();
  clearTimeout(cloud.writeTimer);cloud.busy=true;
@@ -1088,7 +1093,7 @@ async function transfer(move){
    page.error=String(e?.message||'No se pudo confirmar la operación.');
    if(page.remoteResult)page.error+=' El servidor ya la confirmó; reintentá la actualización.';
   }
-  if(!cloud.ready)cloud.ready=true;
+  if(page.remoteResult&&!cloud.ready)busyStatus('Traslado guardado; falta actualizar el calendario.');
  }finally{
   cloud.busy=false;page.processing=false;
   if(dialog===page)overlay.innerHTML=modalHTML();
