@@ -743,8 +743,21 @@ if(dialog.type==='accountmenu'){
  '<button class="opt" data-a="atm-push-enable"><span class="ico">🔔</span><span><strong>Activar notificaciones</strong><small>Registrar este teléfono para recibir avisos de chat</small></span></button>'+
  '<button class="opt" data-a="atm-push-test"><span class="ico">📳</span><span><strong>Probar notificaciones</strong><small>Enviar una prueba solamente a tus dispositivos</small></span></button>'+
  '<button class="opt" data-a="gotonotices"><span class="ico">▤</span><span><strong>Notificaciones</strong></span></button>'+
+ (me?.role==='admin'&&atmReadHeldCopies(me.uuid)?.length?'<button class="opt" data-a="atm-held-copies-open"><span class="ico">📖</span><span><strong>Copias de bitácoras resguardadas ('+atmReadHeldCopies(me.uuid).length+')</strong><small>Solo en este dispositivo · exportar respaldo</small></span></button>':'')+
  (me?.role==='admin'?'<button class="opt" data-a="openusers"><span class="ico">👤</span><span><strong>Usuarios</strong></span></button><button class="opt" data-a="atm-cleanup-open"><span class="ico">🧹</span><span><strong>Limpiar historial</strong><small>Seleccionar fechas y consultar registros</small></span></button>':'')+
  '<button class="opt atm-menu-logout" data-a="logout"><span class="ico">↪</span><span><strong>Cerrar sesión</strong></span></button>';
+}
+else if(dialog.type==='heldcopies'){
+ if(me?.role!=='admin')return '';
+ const saved=atmReadHeldCopies(me.uuid);
+ h='<div class="row"><h3>Bitácoras resguardadas</h3><button class="btn ghost" data-a="close">×</button></div>'+
+ '<div class="notice">Estas copias no se pudieron registrar en Supabase por los permisos actuales. Se conservan solo en este dispositivo, sin cambiar el autor ni el contenido. <b>Exportá el respaldo antes de borrar los datos del navegador.</b></div>'+
+ (saved===null?'<div class="alert">No se pudo leer el respaldo local.</div>':
+ '<p class="sub">'+saved.length+' copia'+(saved.length===1?'':'s')+' resguardada'+(saved.length===1?'':'s')+'.</p>'+
+ saved.slice(0,25).map(r=>'<div class="card" style="margin:7px 0;padding:10px"><strong>'+esc(r.vehicle_caption||'Vehículo sin nombre')+'</strong><small class="sub">'+esc(r.work_day||'Fecha sin registrar')+'</small><p style="white-space:pre-wrap;margin:5px 0">'+esc(r.body||'')+'</p></div>').join('')+
+ (saved.length>25?'<p class="sub">Se muestran 25 copias; el respaldo contiene todas.</p>':'')+
+ '<button class="btn" data-a="atm-held-copies-export">Descargar respaldo (.json)</button>')+
+ '<button class="btn ghost" data-a="close">Cerrar</button>';
 }
 else if(dialog.type==='cleanup'){
  if(me?.role!=='admin')return '';
@@ -904,7 +917,7 @@ else if(dialog.type==='logdetail'){
 else if(dialog.type==='chatmenu'||dialog.type==='allmenu'){sheet=true;h='<h3>Opciones de chat</h3>'+(dialog.type==='chatmenu'?'<button class="opt" data-a="viewlogs"><span class="ico">📖</span><span class="grow"><strong>Ver bitácoras</strong><small>Registros técnicos enviados</small></span>›</button><button class="opt" data-a="clearask"><span class="ico">🗑</span><span class="grow"><strong>Vaciar chat</strong><small>Ocultar mensajes de tu cuenta</small></span>›</button>':'<button class="opt" data-a="clearallask"><span class="ico">🗑</span><span class="grow"><strong>Vaciar todos mis chats</strong><small>Solo en esta cuenta</small></span>›</button>')+footer}
 else if(dialog.type==='logs'){const id=me.role==='admin'?thread:me.id;const arr=logs.filter(x=>x.employeeId===id&&x.category==='Registrar bitácora').sort((a,b)=>b.ts-a.ts);h='<h3>Bitácoras</h3>'+(arr.length?arr.map(logCard).join(''):'<div class="card sub">No hay registros enviados.</div>')+footer}
 else if(dialog.type==='clearask'||dialog.type==='clearallask'){h='<h3>¿Vaciar historial?</h3><div class="row">'+footer+'<button class="btn red" data-a="clearconfirm">Sí, vaciar</button></div>'}
-else if(dialog.type==='transfer'){const n=totalDay(dialog.src,dialog.scope),nLogs=atmDayLogsForCopy(dialog.src,dialog.scope).length;h='<h3>'+(dialog.origin==='tasks'?'Copiar o mover día':'Copiar programación')+'</h3><p class="sub">'+n+' tareas de '+esc(fmt(dialog.src))+' hacia '+esc(fmt(dialog.dest))+'. '+(dialog.scope==='all'?'Todos los técnicos.':'Solo '+esc(user(dialog.scope)?.name||'el técnico')+'.')+'</p><p class="sub">Al copiar también se incluirán '+nLogs+' bitácora'+(nLogs===1?'':'s')+'. Los vehículos y registros existentes en la fecha de destino no se reemplazan.</p><div class="stack">'+(dialog.origin==='tasks'?'<div class="row"><button class="btn ghost" data-a="copy">Copiar</button><button class="btn" data-a="move">Mover</button></div>':'<button class="btn" data-a="copy">Confirmar copia</button>')+footer+'</div>'}
+else if(dialog.type==='transfer'){const n=totalDay(dialog.src,dialog.scope),nLogs=atmDayLogsForCopy(dialog.src,dialog.scope).length;h='<h3>'+(dialog.origin==='tasks'?'Copiar o mover día':'Copiar programación')+'</h3><p class="sub">'+n+' tareas de '+esc(fmt(dialog.src))+' hacia '+esc(fmt(dialog.dest))+'. '+(dialog.scope==='all'?'Todos los técnicos.':'Solo '+esc(user(dialog.scope)?.name||'el técnico')+'.')+'</p><p class="sub">La programación existente se conserva. '+(nLogs?'Hay '+nLogs+' bitácora'+(nLogs===1?'':'s')+' de origen que NO se copiarán hasta habilitar una operación segura en el servidor.':'No hay bitácoras de origen para copiar.')</p><div class="stack">'+(dialog.origin==='tasks'?'<div class="row"><button class="btn ghost" data-a="copy">Copiar</button><button class="btn" data-a="move">Mover</button></div>':'<button class="btn" data-a="copy">Confirmar copia</button>')+footer+'</div>'}
 else if(dialog.type==='deleteDay'||dialog.type==='deleteJob'){h='<h3>¿Eliminar programación?</h3><p class="sub">'+(dialog.type==='deleteDay'?'Eliminar '+totalDay(dialog.src,dialog.scope)+' actividades del '+esc(fmt(dialog.src))+'.':'Eliminar la tarea seleccionada.')+'</p><div class="row">'+footer+'<button class="btn red" data-a="deleteconfirm">Eliminar</button></div>'}
 return '<div class="modalwrap '+(sheet?'sheet':'')+(dialog.type==='accountmenu'?' atm-menu-wrap':'')+'"><div class="dialog">'+h+'</div></div>'}
 let historyBooted=false,suppressHistory=false,lastHistoryJSON='',historyRoute='';
@@ -1014,7 +1027,8 @@ function transfer(move){
  const d=dialog;
  const arr=onDay(d.src,d.scope).map(x=>({...x,kind:'job'}));
  const booked=bookingsDay(d.src,d.scope).map(x=>({...x,kind:'booking'}));
- const sourceLogs=move?[]:atmDayLogsForCopy(d.src,d.scope);
+ // Evitar generar nuevas bitácoras copiadas que RLS rechaza.
+ const sourceLogs=[];
  const bySource=new Map(),groups=new Map();
  for(const item of [...arr,...booked]){const g=item.userId??'pending';if(!groups.has(g))groups.set(g,[]);groups.get(g).push(item)}
  for(const [owner,items] of groups){
@@ -1525,6 +1539,57 @@ function atmRememberPending(){
  }
  try{localStorage.setItem(atmOutboxKey(me.uuid),JSON.stringify([...map.values()].slice(-100)))}catch(e){console.warn('No se pudo guardar aviso pendiente',e)}
 }
+/* La política RLS no permite insertar bitácoras desde administrador.
+   Resguardar primero y solo después sacar de la cola las copias rechazadas. */
+function atmHeldCopiesKey(id){return 'atm_manager_held_copies_'+id;}
+function atmReadHeldCopies(id){
+ try{
+  const raw=localStorage.getItem(atmHeldCopiesKey(id));
+  if(!raw)return [];
+  const rows=JSON.parse(raw);
+  return Array.isArray(rows)?rows:null;
+ }catch(e){console.error('Respaldo de bitácoras ilegible',e);return null}
+}
+function atmQuarantineAdminCopies(){
+ if(me?.role!=='admin'||!me.uuid)return true;
+ const id=me.uuid,queue=atmReadOutbox(id),badRow=r=>r?.author_id===id&&r.category==='Registrar bitácora';
+ const unsent=messages.filter(m=>m.sender===me.id&&m.category==='Registrar bitácora'&&!cloud.lastNotice.has(m.uuid));
+ const rejected=[...queue.filter(badRow),...unsent.map(rowForMessage).filter(badRow)];
+ if(!rejected.length)return true;
+ try{
+  const before=atmReadHeldCopies(id);
+  if(!before)throw new Error('El respaldo anterior no puede leerse.');
+  const unique=new Map(before.filter(r=>r?.id).map(r=>[r.id,r]));
+  rejected.forEach(r=>{if(r.id)unique.set(r.id,r)});
+  localStorage.setItem(atmHeldCopiesKey(id),JSON.stringify([...unique.values()]));
+  const test=atmReadHeldCopies(id);
+  if(!test||rejected.some(r=>r.id&&!test.some(v=>v.id===r.id)))throw new Error('No se pudo confirmar el respaldo.');
+  const remaining=queue.filter(r=>!badRow(r));
+  if(remaining.length)localStorage.setItem(atmOutboxKey(id),JSON.stringify(remaining));
+  else localStorage.removeItem(atmOutboxKey(id));
+  if(unsent.length){const ids=new Set(unsent.map(m=>m.uuid));messages=messages.filter(m=>!ids.has(m.uuid));reportLogs();}
+  console.warn('Copias administrativas resguardadas localmente',rejected.length);
+  notify('Bitácoras resguardadas. Exportalas desde Opciones del taller.');
+  return true;
+ }catch(e){
+  console.error('No se pudieron resguardar las bitácoras',e);
+  cloud.retryPaused=true;busyStatus('No se pudo guardar respaldo; la cola está conservada.');
+  return false;
+ }
+}
+root.addEventListener('click',e=>{
+ const b=e.target.closest('[data-a="atm-held-copies-open"],[data-a="atm-held-copies-export"]');
+ if(!b)return;
+ e.preventDefault();e.stopImmediatePropagation();
+ if(me?.role!=='admin')return;
+ if(b.dataset.a==='atm-held-copies-open'){showDialog({type:'heldcopies'});return;}
+ const rows=atmReadHeldCopies(me.uuid);if(!rows?.length){notify('No hay copias para exportar.');return;}
+ const payload={format:'atm-manager-bitacoras-resguardadas-v1',exported_at:new Date().toISOString(),records:rows};
+ const url=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:'application/json;charset=utf-8'}));
+ const a=document.createElement('a');a.href=url;a.download='atm-manager-bitacoras-resguardadas-'+new Date().toISOString().slice(0,10)+'.json';
+ document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);
+ notify('Respaldo descargado. Guardalo en un lugar seguro.');
+},true);
 function atmForgetPending(id,author){if(!author||!id)return;try{const keep=atmReadOutbox(author).filter(x=>x.id!==id);if(keep.length)localStorage.setItem(atmOutboxKey(author),JSON.stringify(keep));else localStorage.removeItem(atmOutboxKey(author))}catch(_){}}
 /* Los avisos pendientes de bitácoras copiadas sobreviven si una nueva
    actividad no llegó a sincronizarse. Si ya no existe su trabajo asociado,
@@ -1544,6 +1609,7 @@ function atmPersistPendingRepair(userId,record){
 }
 async function atmDeliverPending(){
  if(!me?.uuid||!cloud.ready)return;
+ if(!atmQuarantineAdminCopies())return;
  const id=me.uuid,pending=atmReadOutbox(id);if(!pending.length)return;
  cloud.busy=true;
  let processed=0;
@@ -1638,6 +1704,7 @@ async function cloudLoad(){if(!cloud.sb||cloud.busy||cloud.loading||!me)return;c
  }catch(e){console.error('No se pudo descargar la información',e);busyStatus('Sin sincronizar · Revisá tu conexión');}finally{cloud.skip=false;cloud.loading=false;}}
 async function cloudWrite(){
  if(!cloud.ready||!me||cloud.busy||cloud.loading||cloud.retryPaused||cloud.expiring)return;
+ if(!atmQuarantineAdminCopies())return;
  if(draftSignature()===cloud.revision)return;
  // Never send writes when the browser has lost the authenticated session.
  const expectedId=me.uuid;
