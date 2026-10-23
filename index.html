@@ -1526,14 +1526,35 @@ function atmRememberPending(){
  try{localStorage.setItem(atmOutboxKey(me.uuid),JSON.stringify([...map.values()].slice(-100)))}catch(e){console.warn('No se pudo guardar aviso pendiente',e)}
 }
 function atmForgetPending(id,author){if(!author||!id)return;try{const keep=atmReadOutbox(author).filter(x=>x.id!==id);if(keep.length)localStorage.setItem(atmOutboxKey(author),JSON.stringify(keep));else localStorage.removeItem(atmOutboxKey(author))}catch(_){}}
+/* Los avisos pendientes de bitácoras copiadas sobreviven si una nueva
+   actividad no llegó a sincronizarse. Si ya no existe su trabajo asociado,
+   conservar la bitácora como independiente, sin relacionarla erróneamente
+   con otro vehículo que tenga el mismo nombre. */
+function atmRepairPendingLog(row){
+ if(!row||row.category!=='Registrar bitácora'||!row.work_item_id)return row;
+ if(cloud.lastWork.has(row.work_item_id))return row;
+ return {...row,work_item_id:null};
+}
+function atmPersistPendingRepair(userId,record){
+ try{
+  const queued=atmReadOutbox(userId);
+  const fixed=queued.map(x=>x.id===record.id?record:x);
+  if(fixed.some(x=>x.id===record.id))localStorage.setItem(atmOutboxKey(userId),JSON.stringify(fixed));
+ }catch(e){console.warn('El aviso pendiente reparado sigue en memoria:',e)}
+}
 async function atmDeliverPending(){
  if(!me?.uuid||!cloud.ready)return;
  const id=me.uuid,pending=atmReadOutbox(id);if(!pending.length)return;
  cloud.busy=true;
  let processed=0;
  try{
-  for(const row of pending){
-   if(row.author_id!==id)continue;
+  for(const original of pending){
+   if(original.author_id!==id)continue;
+   const row=atmRepairPendingLog(original);
+   if(row!==original){
+    atmPersistPendingRepair(id,row);
+    console.warn('Bitácora guardada como independiente porque el trabajo copiado no existe',row.id);
+   }
    const check=await cloud.sb.from('atm_notices').select('id').eq('id',row.id).maybeSingle();
    if(check.error)throw check.error;
    if(!check.data){const {error:e}=await cloud.sb.from('atm_notices').insert(row);
@@ -1546,7 +1567,12 @@ async function atmDeliverPending(){
    cloud.lastNotice.add(row.id);updateSendCheck(row.id);
     if(row.category!=='Registrar bitácora')await atmPushDispatch('notice',row.id);
   }
- }catch(e){console.warn('Avisos pendientes sin confirmar',e);busyStatus('Hay avisos pendientes de enviar. Revisá tu conexión.');cloud.retryPaused=true;}
+ }catch(e){
+  console.warn('Error real al recuperar avisos pendientes',e);
+  const code=String(e?.code||e?.status||'sin código').slice(0,30);
+  busyStatus('Avisos pendientes · Error '+code+' · Tocá para reintentar');
+  cloud.retryPaused=true;
+ }
  finally{cloud.busy=false;}
  if(processed)await cloudLoad();
 }
@@ -1674,7 +1700,15 @@ async function cloudWrite(){
   notify('El aviso todavía no se guardó. Revisá la conexión.');
  }finally{cloud.busy=false;}
 }
-root.addEventListener('click',e=>{if(e.target.closest('#atm-cloud-status')&&cloud.retryPaused&&cloud.ready&&me){cloud.retryPaused=false;cloudWrite();}});
+async function atmRetryPendingAndSync(){
+ if(!me||!cloud.ready||cloud.busy||cloud.loading)return;
+ cloud.retryPaused=false;
+ if(atmReadOutbox(me.uuid).length)await atmDeliverPending();
+ if(cloud.retryPaused)return;
+ if(draftSignature()!==cloud.revision)await cloudWrite();
+ else busyStatus('');
+}
+root.addEventListener('click',e=>{if(e.target.closest('#atm-cloud-status')&&cloud.retryPaused&&cloud.ready&&me)atmRetryPendingAndSync();});
 
 /* Web Push: registration belongs to the authenticated user and the current device. */
 const ATM_PUSH_URL=ATM_URL+'/functions/v1/atm-push';
