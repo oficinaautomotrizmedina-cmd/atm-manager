@@ -1,11 +1,21 @@
-const CACHE='atm-manager-shell-v31';
+const CACHE='atm-manager-shell-v32';
 self.addEventListener('install',event=>{self.skipWaiting()});
 self.addEventListener('activate',event=>{event.waitUntil(self.clients.claim())});
 self.addEventListener('fetch',event=>{
- if(event.request.method!=='GET')return;
- if(event.request.mode==='navigate'){
-  event.respondWith(fetch(event.request,{cache:'no-store'}).catch(()=>new Response('<h2>ATM Manager: se necesita conexión a internet</h2>',{headers:{'Content-Type':'text/html; charset=utf-8'}})));
+ if(event.request.method!=='GET'||event.request.mode!=='navigate')return;
+ const incoming=new URL(event.request.url);
+ const scope=new URL(self.registration.scope);
+ // Los accesos directos antiguos abren la raíz de la PWA: servir el
+ // mismo index.html canónico que funciona al abrirlo directamente.
+ // Conservar parámetros de avisos y trabajos y evitar una respuesta vieja.
+ if(incoming.origin===scope.origin&&incoming.pathname===scope.pathname){
+  const fresh=new URL('./index.html',scope);
+  fresh.search=incoming.search;
+  fresh.searchParams.set('atm_inicio',String(Date.now()));
+  event.respondWith(fetch(fresh.href,{cache:'no-store',credentials:'same-origin'}).catch(()=>new Response('<h2>ATM Manager: se necesita conexión a internet</h2>',{headers:{'Content-Type':'text/html; charset=utf-8'}})));
+  return;
  }
+ event.respondWith(fetch(event.request,{cache:'no-store'}).catch(()=>new Response('<h2>ATM Manager: se necesita conexión a internet</h2>',{headers:{'Content-Type':'text/html; charset=utf-8'}})));
 });
 self.addEventListener('push',event=>{
  let data={title:'ATM Manager',body:'Tenés un nuevo aviso.',url:self.registration.scope};
