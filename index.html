@@ -399,7 +399,7 @@ function atmWorkReferences(item){
 }
 function atmReferenceHTML(rows){
  if(me?.role!=='admin'||!rows.length)return '';
- return '<details class="atm-work-reference"><summary>Referencia<span class="atm-work-reference-chevron" aria-hidden="true">⌄</span></summary>'+
+ return '<details class="atm-work-reference" open><summary>Referencia<span class="atm-work-reference-chevron" aria-hidden="true">⌄</span></summary>'+
  '<div class="atm-work-reference-body">'+rows.slice().sort((a,b)=>a.ts-b.ts)
   .map(m=>'<p class="atm-work-reference-text">'+esc(m.text||'')+'</p>').join('')+'</div></details>';
 }
