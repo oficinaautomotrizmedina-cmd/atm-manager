@@ -1170,9 +1170,13 @@ async function removeStuff(){
    removedLogs=deleted.count;
   }
   if(workIds.length){
-   const {error}=await cloud.sb.from('atm_work_items').delete().in('id',workIds);
+   const {data:removedWork,error}=await cloud.sb.from('atm_work_items').delete().in('id',workIds).select('id');
    if(error)throw error;
    remoteChanged=true;
+   if(!Array.isArray(removedWork)||removedWork.length!==workIds.length||
+      new Set(removedWork.map(x=>x.id)).size!==workIds.length||
+      workIds.some(id=>!removedWork.some(x=>x.id===id)))
+    throw new Error('El servidor no confirmó todas las actividades eliminadas. Revisá el resultado antes de reintentar.');
   }
   finished=true;
  }catch(e){
