@@ -156,6 +156,18 @@
 #app .atm-work-log-text{flex:1;min-width:0;font-size:12px;color:#244f39;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
 #app .atm-work-log-text small{display:block;color:#61806a;font-size:10px;font-weight:700;margin-top:4px}
 #app .atm-work-log-delete{border:1px solid #e7c1be;border-radius:8px;background:#fff7f6;color:#a1322b;min-width:30px;min-height:30px;font-size:19px;line-height:1}
+/* Referencias administrativas de solo lectura; no son bitácoras de trabajo. */
+#app .atm-work-reference{background:#f5f7f5;border:1px solid #d5ded7;border-radius:9px;margin-top:7px;overflow:hidden;color:#274635}
+#app .atm-work-reference>summary{cursor:pointer;display:flex;align-items:center;gap:9px;padding:10px 12px;font-size:12px;font-weight:800;list-style:none;user-select:none;min-height:40px}
+#app .atm-work-reference>summary::-webkit-details-marker{display:none}
+#app .atm-work-reference>summary::before{content:"▤";font-size:16px;color:#5b7464}
+#app .atm-work-reference-chevron{margin-left:auto;color:#587260;transition:transform .16s ease}
+#app .atm-work-reference[open] .atm-work-reference-chevron{transform:rotate(180deg)}
+#app .atm-work-reference-body{padding:1px 12px 11px;font-size:12px;line-height:1.55;color:#2f493a}
+#app .atm-work-reference-text{margin:8px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+#app .atm-work-reference-text+.atm-work-reference-text{border-top:1px solid #dbe4dc;padding-top:9px}
+#app .atm-reference-only{border:1px solid #d8e2da;background:#fff;border-radius:11px;margin-top:9px;padding:11px}
+#app .atm-reference-only>strong{font-size:13px;color:#233d2e}
 #app .atm-standalone-card{background:white;border:1px solid #cddfd2;border-left:4px solid #16805d;border-radius:10px;padding:12px;display:flex;align-items:center;gap:10px;color:#183d2b}
 #app .atm-standalone-card .details{min-width:0;flex:1;display:flex;flex-direction:column;gap:4px}
 #app .atm-standalone-card small{font-size:10px;color:#3f7758;font-weight:800}
@@ -369,13 +381,49 @@ const displayDayTotal=(d,scope)=>totalDay(d,scope)+(
  scope==='pending'||scope==='none'?0:scope==='all'?
  staff().reduce((n,u)=>n+standaloneLogs(u.id,d).length,0):standaloneLogs(scope,d).length
 );
+/* No mostrar referencias heredadas de otra referencia cuando se copia en cadena. */
+function atmReferencesForDay(date,employeeId){
+ if(me?.role!=='admin')return [];
+ const byUuid=new Map(messages.filter(m=>!!m.uuid).map(m=>[m.uuid,m]));
+ return messages.filter(m=>{
+  if(m.category!=='Registrar bitácora'||!m.copySourceNoticeId||m.workDay!==date||
+     m.employeeId!==Number(employeeId))return false;
+  const source=byUuid.get(m.copySourceNoticeId);
+  return !source||(!source.copySourceNoticeId&&source.category==='Registrar bitácora');
+ });
+}
+function atmWorkReferences(item){
+ const w=item.record;
+ return atmReferencesForDay(w.day,w.userId).filter(m=>m.taskType===item.kind&&
+   m.taskId!=null&&Number(m.taskId)===Number(w.id));
+}
+function atmReferenceHTML(rows){
+ if(me?.role!=='admin'||!rows.length)return '';
+ return '<details class="atm-work-reference"><summary>Referencia<span class="atm-work-reference-chevron" aria-hidden="true">⌄</span></summary>'+
+ '<div class="atm-work-reference-body">'+rows.slice().sort((a,b)=>a.ts-b.ts)
+  .map(m=>'<p class="atm-work-reference-text">'+esc(m.text||'')+'</p>').join('')+'</div></details>';
+}
+function atmStandaloneReferenceHTML(employeeId,date){
+ if(me?.role!=='admin')return '';
+ const rows=atmReferencesForDay(date,employeeId).filter(m=>m.taskId==null);
+ if(!rows.length)return '';
+ const grouped=new Map();
+ for(const m of rows){
+  const name=String(m.vehicle||'Vehículo sin agendar').trim(),key=name.toLocaleLowerCase('es-SV');
+  if(!grouped.has(key))grouped.set(key,{name,rows:[]});
+  grouped.get(key).rows.push(m);
+ }
+ return [...grouped.values()].map(g=>'<div class="atm-reference-only"><strong>'+esc(g.name)+'</strong>'+
+  atmReferenceHTML(g.rows)+'</div>').join('');
+}
 function taskLogsHTML(item){
  if(me?.role!=='admin'||(tab!=='tasks'&&tab!=='calendar'))return '';
  const r=item.record,arr=item.kind==='standalone'?item.logs:logs.filter(l=>l.category==='Registrar bitácora'&&l.employeeId===r.userId&&l.workDay===r.day&&l.taskType===item.kind&&Number(l.taskId)===Number(r.id));
- if(!arr?.length)return '';
- return '<div class="atm-work-log"><strong>📖 Bitácora del día ('+arr.length+')</strong>'+
+ const reference=item.kind==='standalone'?'':atmReferenceHTML(atmWorkReferences(item));
+ const real=arr?.length?'<div class="atm-work-log"><strong>📖 Bitácora del día ('+arr.length+')</strong>'+
  arr.slice().sort((a,b)=>a.ts-b.ts).map(l=>'<div class="atm-work-log-entry"><div class="atm-work-log-text">'+esc(l.text)+'<small>'+esc(logClock(l.ts))+'</small></div>'+
- (l.uuid&&cloud.lastNotice.has(l.uuid)?'<button type="button" class="atm-work-log-delete" data-a="atm-inline-log-delete" data-uuid="'+esc(l.uuid)+'" title="Eliminar esta bitácora" aria-label="Eliminar esta bitácora">×</button>':'')+'</div>').join('')+'</div>';
+ (l.uuid&&cloud.lastNotice.has(l.uuid)?'<button type="button" class="atm-work-log-delete" data-a="atm-inline-log-delete" data-uuid="'+esc(l.uuid)+'" title="Eliminar esta bitácora" aria-label="Eliminar esta bitácora">×</button>':'')+'</div>').join('')+'</div>':'';
+ return reference+real;
 }
 function workWithLogsHTML(item,i,editable,draggable){
  return '<div class="atm-work-with-log">'+workHTML(item,i,editable,draggable)+taskLogsHTML(item)+'</div>';
@@ -522,8 +570,8 @@ function logsHTML(){
  '<div class="row daily-heading"><b style="font-size:13px;color:#173d28">'+esc(fmt(logDay))+'</b><span class="pill">'+daily.length+' '+mode.label+' del día</span></div>'+
  '<div class="log-summary"><div class="log-stat"><b>'+daily.length+'</b><small>'+mode.title+' del día</small></div><div class="log-stat"><b>'+new Set(daily.map(x=>x.employeeId)).size+'</b><small>Técnicos con '+mode.label+'</small></div></div>'+
  (!own?'<div class="log-toolbar"><select id="logperson" aria-label="Filtrar técnico"><option value="all">Todos los técnicos</option>'+members.map(u=>'<option value="'+u.id+'" '+(String(logEmployee)===String(u.id)?'selected':'')+'>'+esc(u.name)+'</option>').join('')+'</select></div>':'')+
- (me?.role==='admin'&&mode.cat==='Registrar bitácora'&&entries.some(l=>!!l.copySourceNoticeId)?
- '<button type="button" class="btn ghost" data-a="atm-remove-copied-logs" style="border-color:#d9b4af;color:#943e35">Eliminar solo bitácoras copiadas del día ('+entries.filter(l=>!!l.copySourceNoticeId).length+')</button>':'')+
+ (me?.role==='admin'&&mode.cat==='Registrar bitácora'&&atmCopiedLogsForRemoval(logDay,logEmployee).length?
+ '<button type="button" class="btn ghost" data-a="atm-remove-copied-logs" style="border-color:#d9b4af;color:#943e35">Eliminar referencias de este día ('+atmCopiedLogsForRemoval(logDay,logEmployee).length+')</button>':'')+
  logControlsHTML(entries)+
  (entries.length?'<div class="log-list">'+members.filter(u=>entries.some(l=>l.employeeId===u.id)).map(u=>{const mine=entries.filter(l=>l.employeeId===u.id);return '<div class="log-group"><div class="log-grouphead"><span class="avatar" style="width:30px;height:30px">'+esc(u.name[0])+'</span><strong>'+esc(u.name)+'</strong><span class="pill">'+mine.length+' '+mode.label+'</span></div>'+mine.map(logCard).join('')+'</div>'}).join('')+'</div>':
  '<div class="card" style="text-align:center;align-items:center;padding:22px 15px"><span style="font-size:27px">'+mode.icon+'</span><b style="color:#16412e">Sin '+mode.label+' para esta selección</b></div>')+
@@ -562,7 +610,8 @@ function calWeek(scope){
 function jobsGroup(u){
  const work=displaySchedule(u.id,day);
  return '<div class="group"><div class="row"><div class="row" style="justify-content:flex-start"><span class="avatar" style="height:32px;width:32px">'+esc(u.name.charAt(0))+'</span><b>'+esc(u.name)+'</b></div><span class="pill">'+work.length+' asignaciones</span></div>'+
- (work.length?'<div class="section-title">ORDEN DE TRABAJO</div><div class="work-queue">'+work.map((item,i)=>workWithLogsHTML(item,i,me.role==='admin',me.role==='admin'&&item.kind!=='standalone')).join('')+'</div>':'<span class="sub">No hay actividades para este día.</span>')+'</div>';
+ (work.length?'<div class="section-title">ORDEN DE TRABAJO</div><div class="work-queue">'+work.map((item,i)=>workWithLogsHTML(item,i,me.role==='admin',me.role==='admin'&&item.kind!=='standalone')).join('')+'</div>':'<span class="sub">No hay actividades para este día.</span>')+
+ atmStandaloneReferenceHTML(u.id,day)+'</div>';
 }
 
 function calendarHTML(){
@@ -588,8 +637,8 @@ function tasksHTML(){
  if(!employee)return '<div class="page">'+heading('Tareas','')+staff().map(u=>'<button class="item" data-a="employee" data-id="'+u.id+'"><span class="tech-name-chip">'+esc(u.name)+'</span><span class="details"><small>'+[...jobs,...appointments].filter(j=>j.userId===u.id).length+' asignaciones</small></span><span class="tech-chevron">›</span></button>').join('')+
  '<div class="section-title" style="margin-top:7px">RECEPCIÓN</div><button class="item pending-access" data-a="pending"><span class="avatar" style="background:#faecca;color:#79530e">◷</span><span class="details"><strong>Pendientes de asignar</strong><small class="pending-vehicle-preview">'+pendingVehicleSummary()+'</small></span>›</button></div>';
  if(employee==='pending')return '<div class="page"><button class="btn ghost" data-a="backemployee">‹ Volver a técnicos</button>'+heading('Pendientes de asignar','')+calWeek('pending')+'<div class="row"><b style="font-size:13px">'+esc(fmt(day))+'</b><span class="pill">'+pendingBookings(day).length+' pendientes</span></div>'+(pendingPanel(day,true)||'<div class="card sub">No hay vehículos pendientes en esta fecha.</div>')+'</div>';
- const u=user(employee),work=displaySchedule(employee,day);
- return '<div class="page"><button class="btn ghost" data-a="backemployee">‹ Volver a técnicos</button>'+heading(u.name,'ORDEN DE ATENCIÓN')+'<button class="btn atm-task-add-cta" data-a="newjob">＋ Agregar actividad</button>'+calWeek(employee)+'<div class="row"><b style="font-size:13px">'+esc(fmt(day))+'</b><button type="button" class="atm-task-log-button" data-a="employee-logs">📖 Bitácora</button></div><div class="row"><span class="pill">'+work.length+' actividades</span></div><div class="work-queue">'+(work.length?work.map((item,i)=>workWithLogsHTML(item,i,true,true)).join(''):'<div class="card sub">Todavía no hay trabajos asignados en este día.</div>')+'</div></div>';
+ const u=user(employee),work=displaySchedule(employee,day),referenceExtras=atmStandaloneReferenceHTML(employee,day);
+ return '<div class="page"><button class="btn ghost" data-a="backemployee">‹ Volver a técnicos</button>'+heading(u.name,'ORDEN DE ATENCIÓN')+'<button class="btn atm-task-add-cta" data-a="newjob">＋ Agregar actividad</button>'+calWeek(employee)+'<div class="row"><b style="font-size:13px">'+esc(fmt(day))+'</b><button type="button" class="atm-task-log-button" data-a="employee-logs">📖 Bitácora</button></div><div class="row"><span class="pill">'+work.length+' actividades</span></div><div class="work-queue">'+(work.length?work.map((item,i)=>workWithLogsHTML(item,i,true,true)).join(''):'<div class="card sub">Todavía no hay trabajos asignados en este día.</div>')+referenceExtras+'</div></div>';
 }
 
 function inboxHTML(){return '<div class="page">'+'<div class="row">'+heading('Avisos y mensajes','')+'<button class="btn ghost" data-a="allmenu" aria-label="Opciones de avisos">⋮</button></div><div class="stack">'+staff().map(u=>{const m=convo(u.id).slice(-1)[0],n=unreadCount(u.id);return '<button class="item chat-list-button" data-a="openchat" data-id="'+u.id+'"><span class="chat-name-chip">'+esc(u.name)+'</span><span class="details"><small class="chat-preview">'+esc(m?.text||'Sin avisos todavía')+'</small></span>'+(n?'<span class="unread-number">'+n+'</span>':'')+'<span class="chat-chevron">›</span></button>'}).join('')+'</div></div>'}
@@ -1052,6 +1101,7 @@ async function transfer(move){
   overlay.innerHTML=modalHTML();return;
  }
  const source=page.src,destination=page.dest;
+ const sourceRealLogs=atmDayLogsForCopy(source,page.scope).length;
  // Keep the same operation UUID even if the app is restarted after a
  // network response is lost. Do not overwrite any previous attempt.
  const attemptKey='atm_day_transfer_request_'+actor+'_'+source+'_'+destination+'_'+String(page.scope)+'_'+operation;
@@ -1092,7 +1142,7 @@ async function transfer(move){
   day=destination;week=destination;
   if(dialog===page)closeDialog();
   render();
-  notify(result.work_count+' actividades y '+result.log_count+' bitácoras '+(move?'trasladadas':'copiadas')+' en Supabase.');
+  notify(result.work_count+' actividades '+(move?'trasladadas':'copiadas')+' · '+sourceRealLogs+' '+(move?'bitácoras originales trasladadas':'referencias para planificación')+'.');
  }catch(e){
   console.error('No se completó el traslado:',e);
   if(dialog===page){
@@ -1816,7 +1866,7 @@ function noticeToUI(row,workByUuid){let owner=uiFor(row.target_employee_id),send
  const ts=new Date(row.created_at).getTime();let localId=cloud.noticeUiIds.get(row.id);if(!localId){localId=nextMsg++;cloud.noticeUiIds.set(row.id,localId)};
  return {uuid:row.id,id:localId,employeeId:owner,sender:send,category:localCat,vehicle:row.vehicle_caption||w?.vehicle||w?.title||null,text:row.body,allowReply:row.allow_reply,replyUuid:row.reply_to,replyTo:null,taskType:w?('title' in w?'job':'booking'):null,taskId:w?.id||null,workDay:row.work_day||w?.day||null,priority:row.priority_caption||w?.priority||null,taskDetail:row.task_snapshot||w?.instructions||w?.detail||'',copySourceDay:row.copied_from_work_day||null,copySourceNoticeId:row.copied_from_notice_id||null,ts};
 }
-function reportLogs(){logs=[];nextLog=1;messages.forEach(m=>{if(!['Informar avance','Reportar problema','Registrar bitácora'].includes(m.category))return;
+function reportLogs(){logs=[];nextLog=1;messages.forEach(m=>{if(m.copySourceNoticeId||!['Informar avance','Reportar problema','Registrar bitácora'].includes(m.category))return;
  const w=m.taskType==='job'?jobs.find(x=>x.id===m.taskId):appointments.find(x=>x.id===m.taskId);
  const workDay=m.workDay||w?.day||new Date(m.ts).toISOString().slice(0,10);
  logs.push({uuid:m.uuid,id:nextLog++,employeeId:m.employeeId,workDay,taskType:m.taskType||(m.taskId==null&&m.category==='Registrar bitácora'?'standalone':'booking'),taskId:m.taskId,vehicle:m.vehicle||w?.vehicle||w?.title||'Actividad',taskDetail:m.taskDetail||w?.instructions||w?.detail||'',priority:m.priority||w?.priority||null,category:m.category,text:m.text,copySourceDay:m.copySourceDay||null,copySourceNoticeId:m.copySourceNoticeId||null,ts:m.ts}); });}
