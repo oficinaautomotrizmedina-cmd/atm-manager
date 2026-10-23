@@ -560,7 +560,7 @@ function calWeek(scope){
 function jobsGroup(u){
  const work=displaySchedule(u.id,day);
  return '<div class="group"><div class="row"><div class="row" style="justify-content:flex-start"><span class="avatar" style="height:32px;width:32px">'+esc(u.name.charAt(0))+'</span><b>'+esc(u.name)+'</b></div><span class="pill">'+work.length+' asignaciones</span></div>'+
- (work.length?'<div class="section-title">ORDEN DE TRABAJO</div><div class="work-queue">'+work.map((item,i)=>workWithLogsHTML(item,i,me.role==='admin',false)).join('')+'</div>':'<span class="sub">No hay actividades para este día.</span>')+'</div>';
+ (work.length?'<div class="section-title">ORDEN DE TRABAJO</div><div class="work-queue">'+work.map((item,i)=>workWithLogsHTML(item,i,me.role==='admin',me.role==='admin'&&item.kind!=='standalone')).join('')+'</div>':'<span class="sub">No hay actividades para este día.</span>')+'</div>';
 }
 
 function calendarHTML(){
@@ -1033,12 +1033,13 @@ function arrowHold(v){if(!drag)return;if(drag.hover===v)return;clearTimeout(drag
 function clearDrag(){if(pending){clearTimeout(pending.timer);pending=null}if(!drag)return;clearTimeout(drag.timer);drag.ghost.remove();drag=null;bin.style.display='none';bin.classList.remove('hit')}
 root.addEventListener('click',e=>{if(e.target.closest('.atm-task-drag-handle')){e.preventDefault();e.stopImmediatePropagation();}},true);
 root.addEventListener('pointerdown',e=>{if(!me||me.role!=='admin'||dialog||e.button!==0)return;let o=null;if(tab==='calendar'||(tab==='tasks'&&employee)){const el=e.target.closest('.day[data-day]'),scope=tab==='tasks'?employee:filter;if(el&&totalDay(el.dataset.day,scope))o={kind:'day',el,day:el.dataset.day,scope,origin:tab}}
-if(!o&&tab==='tasks'&&employee!=='pending'&&employee){const el=e.target.closest('.task[data-work]');if(el&&(e.pointerType!=='touch'||e.target.closest('.atm-task-drag-handle'))){const k=el.dataset.work,record=k[0]==='b'?appointments.find(x=>x.id===Number(k.slice(1))):jobs.find(x=>x.id===Number(k.slice(1)));if(record)o={kind:'job',el,key:k,title:record.vehicle||record.title,emp:record.userId,day:record.day}}}if(!o)return;o.pid=e.pointerId;o.x=e.clientX;o.y=e.clientY;o.timer=setTimeout(()=>longBegin(o),330);pending=o},{passive:true});
+if(!o&&(tab==='calendar'||(tab==='tasks'&&employee!=='pending'&&employee))){const el=e.target.closest('.task[data-work]');if(el&&(e.pointerType!=='touch'||e.target.closest('.atm-task-drag-handle'))){const k=el.dataset.work,record=k[0]==='b'?appointments.find(x=>x.id===Number(k.slice(1))):jobs.find(x=>x.id===Number(k.slice(1)));if(record)o={kind:'job',el,key:k,title:record.vehicle||record.title,emp:record.userId,day:record.day}}}if(!o)return;o.pid=e.pointerId;o.x=e.clientX;o.y=e.clientY;o.timer=setTimeout(()=>longBegin(o),330);pending=o},{passive:true});
 window.addEventListener('pointermove',e=>{if(pending&&pending.pid===e.pointerId){if(Math.hypot(e.clientX-pending.x,e.clientY-pending.y)>12){clearTimeout(pending.timer);pending=null}return}if(!drag||drag.pid!==e.pointerId)return;if(e.cancelable)e.preventDefault();ghostMove(e.clientX,e.clientY);main.querySelectorAll('.day.hit,.task.hit,.arw.hit').forEach(x=>x.classList.remove('hit'));bin.classList.remove('hit');if(inRect(bin,e.clientX,e.clientY,9)){arrowHold(0);bin.classList.add('hit');return}
 if(drag.kind==='day'){const prev=main.querySelector('[data-a="prev"]'),next=main.querySelector('[data-a="next"]'),bounds=main.getBoundingClientRect(),edge=30,
 v=inRect(prev,e.clientX,e.clientY,10)?-1:inRect(next,e.clientX,e.clientY,10)?1:
 (e.clientX<=bounds.left+edge?-1:e.clientX>=bounds.right-edge?1:0);
-arrowHold(v);if(v){(v<0?prev:next)?.classList.add('hit');return}main.querySelectorAll('.day[data-day]').forEach(x=>{if(x.dataset.day!==drag.day&&inRect(x,e.clientX,e.clientY,5))x.classList.add('hit')})}else main.querySelectorAll('.task[data-work]').forEach(x=>{if(x.dataset.work!==drag.key&&inRect(x,e.clientX,e.clientY,5))x.classList.add('hit')})},{passive:false});
+arrowHold(v);if(v){(v<0?prev:next)?.classList.add('hit');return}main.querySelectorAll('.day[data-day]').forEach(x=>{if(x.dataset.day!==drag.day&&inRect(x,e.clientX,e.clientY,5))x.classList.add('hit')})}else main.querySelectorAll('.task[data-work]').forEach(x=>{if(x.dataset.work!==drag.key&&atmSameWorkLane(x.dataset.work,drag.emp,drag.day)&&inRect(x,e.clientX,e.clientY,5))x.classList.add('hit')})},{passive:false});
+function atmSameWorkLane(key,owner,date){const record=key?.[0]==='b'?appointments.find(x=>x.id===Number(key.slice(1))):key?.[0]==='j'?jobs.find(x=>x.id===Number(key.slice(1))):null;return !!record&&record.userId===owner&&record.day===date;}
 function pointerEnd(e,success){
  if(pending&&pending.pid===e.pointerId){clearTimeout(pending.timer);pending=null;return}
  if(!drag||drag.pid!==e.pointerId)return;
@@ -1049,7 +1050,7 @@ function pointerEnd(e,success){
    const target=[...main.querySelectorAll('.day[data-day]')].find(x=>x.dataset.day!==d.day&&inRect(x,e.clientX,e.clientY,6));
    if(target)action={type:'transfer',src:d.day,dest:target.dataset.day,scope:d.scope,origin:d.origin};
   }else{
-   const target=[...main.querySelectorAll('.task[data-work]')].find(x=>x.dataset.work!==d.key&&inRect(x,e.clientX,e.clientY,6));
+   const target=[...main.querySelectorAll('.task[data-work]')].find(x=>x.dataset.work!==d.key&&atmSameWorkLane(x.dataset.work,d.emp,d.day)&&inRect(x,e.clientX,e.clientY,6));
    if(target){const arr=schedule(d.emp,d.day),from=arr.findIndex(x=>x.key===d.key),to=arr.findIndex(x=>x.key===target.dataset.work);
     if(from>=0&&to>=0){const moved=arr.splice(from,1)[0];arr.splice(to,0,moved);arr.forEach((x,i)=>x.record.order=i+1);action={type:'reorder'}}
    }
