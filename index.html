@@ -972,7 +972,7 @@ else if(dialog.type==='newjob'||dialog.type==='editjob'){
  const targetEmployee=j?.userId??newSource?.employeeId??employee,targetDay=j?.day??newSource?.workDay??day;
  h='<h3>'+(j||newSource?'Editar tarea':'Nueva tarea')+'</h3><div class="sub">'+esc(user(targetEmployee)?.name||'')+' · '+esc(fmt(targetDay))+'</div>'+
  '<form id="jobform" class="stack"><label class="field">Vehículo o referencia<input name="title" required value="'+esc(j?.title||newSource?.vehicle||'')+'" placeholder="Nissan Versa"></label>'+
- '<label class="field">Descripción<textarea name="detail" required>'+esc(j?.detail||'')+'</textarea></label><div class="row">'+footer+'<button class="btn">Guardar</button></div></form>'+
+ '<label class="field">Descripción<textarea name="detail"'+(newSource?'':' required')+'>'+esc(j?.detail||'')+'</textarea></label><div class="row">'+footer+'<button class="btn">Guardar</button></div></form>'+
  (j?'<button class="btn note-cta" data-a="notejob" data-id="'+j.id+'">🔔 Enviar nota al técnico de esta actividad</button>':'');
 }
 else if(dialog.type==='categories'){sheet=true;h='<div class="row"><h3>¿Qué querés comunicar?</h3><button class="btn ghost" data-a="close">×</button></div>'+opts.map(o=>'<button class="opt" data-a="category" data-cat="'+esc(o[0])+'"><span class="ico">'+o[2]+'</span><span class="grow"><strong>'+esc(o[0])+'</strong><small>'+esc(o[1])+'</small></span>›</button>').join('')}
@@ -1841,7 +1841,7 @@ if(f.id==='atm-log-editor'&&me?.role!=='admin'&&dialog?.type==='logeditor'&&ctx?
  }
  if(f.id==='jobform'){
  const d=new FormData(f),title=String(d.get('title')||'').trim(),detail=String(d.get('detail')||'').trim();
- if(!title||!detail)return;
+ if(!title||(!detail&&!dialog.sourceLogUuid))return;
  const j=jobs.find(x=>x.id===dialog.id);
  const source=dialog.sourceLogUuid?messages.find(m=>m.uuid===dialog.sourceLogUuid&&!m.copySourceNoticeId):null;
  if(j){j.title=title;j.detail=detail;}
