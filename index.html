@@ -1128,6 +1128,61 @@ function atmDayLogsForCopy(source,scope){
   return linked.has(x.taskType+':'+x.taskId+':'+x.employeeId);
  });
 }
+/* Antes de copiar: materializar como tarea real cada vehículo registrado por
+   el técnico sin agendamiento. Solo el administrador autorizado hace el INSERT.
+   No alterar ni sobrescribir tareas existentes. */
+async function atmEnsureStandaloneJobs(sourceDay,scope,actor){
+ const candidates=atmStandaloneSources(sourceDay,scope);
+ if(!candidates.length)return 0;
+ const {data:existing,error:readError}=await cloud.sb.from('atm_work_items')
+  .select('id,kind,vehicle,assigned_to,work_day').eq('work_day',sourceDay).limit(5000);
+ if(readError)throw readError;
+ if((existing||[]).length===5000)throw new Error('La fecha contiene demasiadas actividades para verificar duplicados.');
+ const sameWork=(m,w)=>w.assigned_to===uuidFor(m.employeeId)&&
+   atmVehicleKey(w.vehicle)===atmVehicleKey(m.vehicle);
+ const missing=candidates.filter(m=>!(existing||[]).some(w=>sameWork(m,w)));
+ if(!missing.length)return 0;
+ const rows=missing.map(m=>({
+  id:m.uuid,kind:'job',vehicle:m.vehicle,instructions:'',service_type:'Por definir',
+  service_other:'',priority:'yellow',reception_start:null,reception_end:null,
+  work_day:sourceDay,assigned_to:uuidFor(m.employeeId),sort_order:null,status:'pending',
+  created_by:actor
+ }));
+ if(rows.some(r=>!r.assigned_to))throw new Error('No se pudo identificar el empleado para convertir su bitácora en tarea.');
+ const {error:insertError}=await cloud.sb.from('atm_work_items').insert(rows);
+ if(insertError)throw insertError;
+ return rows.length;
+}
+/* Impedir que las referencias antiguas se propaguen al siguiente día.
+   Solo se eliminan duplicados administrativos cuyo origen YA era una copia.
+   Nunca se eliminan bitácoras originales del empleado. */
+async function atmCleanInheritedReferences(sourceDay,destDay,scope){
+ if(me?.role!=='admin')return 0;
+ const sources=new Set(messages.filter(m=>m.copySourceNoticeId&&m.workDay===sourceDay&&
+  (scope==='all'||Number(scope)===m.employeeId)).map(m=>m.uuid));
+ if(!sources.size)return 0;
+ const pending=messages.filter(m=>m.category==='Registrar bitácora'&&
+  m.workDay===destDay&&m.copySourceDay===sourceDay&&
+  m.copySourceNoticeId&&sources.has(m.copySourceNoticeId));
+ const ids=[...new Set(pending.map(m=>m.uuid))];
+ if(!ids.length)return 0;
+ if(ids.length>5000)throw new Error('Hay demasiadas referencias anteriores para limpiar de una sola vez.');
+ const {data:session,error:sessionError}=await cloud.sb.auth.getSession();
+ if(sessionError||!session?.session?.access_token||session.session.user?.id!==me.uuid)
+  throw new Error('Se necesita una sesión válida para retirar referencias antiguas.');
+ const token=session.session.access_token;
+ const preview=await cloudAPI({action:'logs_preview',mode:'ids',ids},token);
+ const same=(a,b)=>Array.isArray(a)&&a.length===b.length&&
+   new Set(a).size===b.length&&b.every(id=>a.includes(id));
+ if(!preview?.ok||preview.count!==ids.length||!same(preview.ids,ids))
+  throw new Error('No se pudo verificar qué referencias antiguas retirar. La programación sí se guardó.');
+ const deleted=await cloudAPI({
+  action:'logs_delete',mode:'ids',ids,expected_ids:preview.ids,confirm:'ELIMINAR'
+ },token);
+ if(!deleted?.ok||deleted.deleted!==true||deleted.count!==ids.length||!same(deleted.ids,ids))
+  throw new Error('No se pudo confirmar la eliminación de referencias antiguas. La programación sí se guardó.');
+ return ids.length;
+}
 /* Copiar/mover programación y bitácoras en una transacción del servidor.
    No mostrar copias locales que todavía no estén confirmadas. */
 async function transfer(move){
@@ -1170,6 +1225,13 @@ async function transfer(move){
    throw new Error('Tu sesión cambió. Volvé a ingresar antes de trasladar registros.');
   let result=page.remoteResult;
   if(!result){
+   const created=await atmEnsureStandaloneJobs(source,page.scope,actor);
+   if(created){
+    cloud.busy=false;cloud.ready=false;
+    const refreshed=await cloudLoad();
+    if(!refreshed||!cloud.ready)throw new Error('Se crearon tareas desde las bitácoras, pero no se pudo confirmar la actualización del calendario.');
+    cloud.busy=true;
+   }
    const {data,error}=await cloud.sb.rpc('atm_transfer_day',{
     p_source:source,p_destination:destination,p_mode:operation,
     p_scope_type:scopeType,p_scope_employee:scopeEmployee,p_request_id:requestId
@@ -1186,6 +1248,14 @@ async function transfer(move){
   await cloudLoad();
   if(!cloud.ready||me?.uuid!==actor)
    throw new Error('La operación quedó guardada, pero no se pudo actualizar el calendario.');
+  if(!move){
+   const removed=await atmCleanInheritedReferences(source,destination,page.scope);
+   if(removed){
+    cloud.ready=false;
+    const cleanReloaded=await cloudLoad();
+    if(!cleanReloaded||!cloud.ready)throw new Error('La copia quedó guardada y las referencias anteriores se retiraron, pero falta actualizar la vista.');
+   }
+  }
   // Only release the retry key after the server and the refreshed calendar agree.
   try{if(localStorage.getItem(attemptKey)===requestId)localStorage.removeItem(attemptKey);}catch(_){}
   day=destination;week=destination;
