@@ -413,7 +413,7 @@ function atmReferencesForDay(date,employeeId){
   if(m.category!=='Registrar bitácora'||!m.copySourceNoticeId||m.workDay!==date||
      m.employeeId!==Number(employeeId))return false;
   const source=byUuid.get(m.copySourceNoticeId);
-  return !source||(!source.copySourceNoticeId&&source.category==='Registrar bitácora');
+  return !!source&&!source.copySourceNoticeId&&source.category==='Registrar bitácora';
  });
 }
 function atmWorkReferences(item){
