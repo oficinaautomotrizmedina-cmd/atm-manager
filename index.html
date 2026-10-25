@@ -366,8 +366,32 @@ function addReceptionHours(start,hours=2){
  return String(Math.floor(total/60)).padStart(2,'0')+':'+String(total%60).padStart(2,'0');
 }
 const PRIORITIES={red:{name:'Garantía / Alta prioridad',short:'Garantía / Alta',color:'#cd443b'},yellow:{name:'Nivel técnico',short:'Nivel técnico',color:'#e4ae2c'},green:{name:'Nivel ingeniería',short:'Nivel ingeniería',color:'#22996b'}};
+/* Vehículos identificados por una bitácora sin agendamiento.
+   Las tareas ya existentes prevalecen; nunca suplantar ni duplicar agenda. */
+const atmVehicleKey=x=>String(x||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('es-SV');
+function atmMatchingScheduledWork(date,owner,vehicle){
+ const key=atmVehicleKey(vehicle);
+ if(!key||owner==null)return null;
+ const listed=schedule(owner,date);
+ return listed.find(item=>atmVehicleKey(item.kind==='job'?item.record.title:item.record.vehicle)===key)||null;
+}
+function atmStandaloneSources(date,scope){
+ const groups=new Map();
+ if(scope==='pending'||scope==='none')return [];
+ const permitted=scope==='all'?new Set(staff().map(u=>Number(u.id))):new Set([Number(scope)]);
+ for(const m of messages){
+  if(m.category!=='Registrar bitácora'||m.copySourceNoticeId||
+     m.workDay!==date||m.taskId!=null||!m.uuid||
+     !cloud.lastNotice.has(m.uuid)||!permitted.has(Number(m.employeeId)))continue;
+  const key=Number(m.employeeId)+'|'+atmVehicleKey(m.vehicle);
+  if(!atmVehicleKey(m.vehicle)||atmMatchingScheduledWork(date,m.employeeId,m.vehicle))continue;
+  const previous=groups.get(key);
+  if(!previous||m.ts<previous.ts)groups.set(key,m);
+ }
+ return [...groups.values()].sort((a,b)=>a.ts-b.ts);
+}
 const standaloneLogs=(id,d)=>{
- const matches=logs.filter(l=>l.category==='Registrar bitácora'&&l.taskType==='standalone'&&l.employeeId===Number(id)&&l.workDay===d);
+ const matches=logs.filter(l=>l.category==='Registrar bitácora'&&l.taskType==='standalone'&&l.employeeId===Number(id)&&l.workDay===d&&!atmMatchingScheduledWork(d,id,l.vehicle));
  const groups=new Map();
  for(const l of matches){
   const key=String(l.vehicle||'').trim().toLocaleLowerCase('es-SV');
@@ -394,8 +418,13 @@ function atmReferencesForDay(date,employeeId){
 }
 function atmWorkReferences(item){
  const w=item.record;
- return atmReferencesForDay(w.day,w.userId).filter(m=>m.taskType===item.kind&&
-   m.taskId!=null&&Number(m.taskId)===Number(w.id));
+ return atmReferencesForDay(w.day,w.userId).filter(m=>{
+  if(m.taskId!=null)return m.taskType===item.kind&&Number(m.taskId)===Number(w.id);
+  // Copied standalone logs are not linked to a work_item_id. Attach to the
+  // unique first scheduled vehicle for that employee/day instead of orphaning.
+  const linked=atmMatchingScheduledWork(w.day,w.userId,m.vehicle);
+  return linked?.kind===item.kind&&linked.record.id===w.id;
+ });
 }
 function atmReferenceHTML(rows){
  if(me?.role!=='admin'||!rows.length)return '';
@@ -405,7 +434,7 @@ function atmReferenceHTML(rows){
 }
 function atmStandaloneReferenceHTML(employeeId,date){
  if(me?.role!=='admin')return '';
- const rows=atmReferencesForDay(date,employeeId).filter(m=>m.taskId==null);
+ const rows=atmReferencesForDay(date,employeeId).filter(m=>m.taskId==null&&!atmMatchingScheduledWork(date,employeeId,m.vehicle));
  if(!rows.length)return '';
  const grouped=new Map();
  for(const m of rows){
@@ -418,7 +447,12 @@ function atmStandaloneReferenceHTML(employeeId,date){
 }
 function taskLogsHTML(item){
  if(me?.role!=='admin'||(tab!=='tasks'&&tab!=='calendar'))return '';
- const r=item.record,arr=item.kind==='standalone'?item.logs:logs.filter(l=>l.category==='Registrar bitácora'&&l.employeeId===r.userId&&l.workDay===r.day&&l.taskType===item.kind&&Number(l.taskId)===Number(r.id));
+ const r=item.record,arr=item.kind==='standalone'?item.logs:logs.filter(l=>{
+  if(l.category!=='Registrar bitácora'||l.employeeId!==r.userId||l.workDay!==r.day)return false;
+  if(l.taskId!=null)return l.taskType===item.kind&&Number(l.taskId)===Number(r.id);
+  const linked=atmMatchingScheduledWork(r.day,r.userId,l.vehicle);
+  return linked?.kind===item.kind&&linked.record.id===r.id;
+ });
  const reference=item.kind==='standalone'?'':atmReferenceHTML(atmWorkReferences(item));
  const real=arr?.length?'<div class="atm-work-log"><strong>📖 Bitácora del día ('+arr.length+')</strong>'+
  arr.slice().sort((a,b)=>a.ts-b.ts).map(l=>'<div class="atm-work-log-entry"><div class="atm-work-log-text">'+esc(l.text)+'<small>'+esc(logClock(l.ts))+'</small></div>'+
@@ -440,7 +474,15 @@ function bookingHTML(a,adminCanEdit=false,position=null,draggable=false){const p
  return '<'+(adminCanEdit?'button':'div')+' class="booking-card priority-'+esc(a.priority)+(draggable?' task':'')+'" data-work-uuid="'+esc(a.uuid||'')+'"'+(adminCanEdit?' data-a="editbooking" data-booking="'+a.id+'" title="Editar vehículo agendado"':'')+(draggable?' data-work="b'+a.id+'"':'')+'>'+(position!==null?'<span class="numb">'+position+'</span>':'')+'<span class="booking-icon">🚘</span><span class="booking-content"><span class="booking-label">VEHÍCULO AGENDADO</span><strong class="booking-name">'+esc(a.vehicle)+'</strong>'+'<span class="booking-time'+(a.receptionStart&&a.receptionEnd?'':' unscheduled')+'">🕗 Recepción: '+esc(receptionRange(a))+'</span><p class="booking-instructions">'+esc(a.instructions)+'</p>'+(me?.role==='admin'&&a.serviceType&&a.serviceType!=='Por definir'?'<span class="service-pill">'+esc(a.serviceType==='Otro'?(a.serviceOther||'Otro'):a.serviceType)+'</span>':'')+'<span class="priority-label priority-'+esc(a.priority)+'"><span class="legend-dot '+esc(a.priority)+'"></span>'+esc(pr.name)+'</span>'+(a.userId===null?'<span class="assignment-flag" style="margin-left:5px">Pendiente de asignar</span>':'')+noteInCalendar('booking',a.id)+'</span>'+(draggable?'<span class="atm-task-drag-handle" title="Mantené presionado aquí para ordenar" aria-label="Mantener presionado para reordenar">⋮⋮</span>':adminCanEdit?'<span style="color:#296a4f;font-weight:900">›</span>':'')+'</'+(adminCanEdit?'button':'div')+'>';
 }
 function workHTML(item,i,adminCanEdit=false,draggable=false){
- if(item.kind==='standalone')return '<div class="atm-standalone-card"><span class="numb">'+(i+1)+'</span><div class="details"><strong>'+esc(item.record.vehicle)+'</strong><small>BITÁCORA · VEHÍCULO SIN AGENDAR</small></div></div>';
+ if(item.kind==='standalone'){
+  const canConvert=me?.role==='admin',first=item.logs?.[0];
+  return '<'+(canConvert?'button':'div')+' class="atm-standalone-card"'+
+   (canConvert&&first?.uuid?' type="button" data-a="atm-edit-standalone" data-log-uuid="'+esc(first.uuid)+'"':'')+
+   '><span class="numb">'+(i+1)+'</span><span class="details"><strong>'+esc(item.record.vehicle)+'</strong>'+
+   '<small>'+(canConvert?'TAREA · TOCÁ PARA EDITAR':'BITÁCORA · VEHÍCULO SIN AGENDAR')+'</small></span>'+
+   (canConvert?'<span class="tech-chevron" aria-hidden="true">›</span>':'')+
+   '</'+(canConvert?'button':'div')+'>';
+ }
  if(item.kind==='booking')return bookingHTML(item.record,adminCanEdit,i+1,draggable);
  const j=item.record,canOpen=draggable||adminCanEdit;
  return '<'+(canOpen?'button':'div')+' class="item'+(draggable?' task':'')+'" data-work-uuid="'+esc(j.uuid||'')+'" style="border-left:3px solid #91b7a0"'+(canOpen?' type="button" data-a="editjob" data-job="'+j.id+'" title="Editar tarea"':'')+(draggable?' data-work="j'+j.id+'"':'')+'><span class="numb">'+(i+1)+'</span><span class="details"><strong>'+esc(j.title)+'</strong>'+'<small>'+esc(j.detail)+'</small>'+noteInCalendar('job',j.id)+'</span>'+(draggable?'<span class="atm-task-drag-handle" title="Mantené presionado aquí para ordenar" aria-label="Mantener presionado para reordenar">⋮⋮</span>':adminCanEdit?'<span class="tech-chevron" aria-hidden="true">›</span>':'')+'</'+(canOpen?'button':'div')+'>';
@@ -925,7 +967,14 @@ else if(dialog.type==='newbooking'||dialog.type==='editbooking'){
  (dialog.processing?'<p class="sub">Confirmando eliminación en el servidor…</p>':'')+
  '<div class="row"><button type="button" class="btn ghost" data-a="close" '+(dialog.processing?'disabled':'')+'>Cancelar</button><button type="button" class="btn red" data-a="confirmdeletebooking" '+(dialog.processing?'disabled':'')+'>Eliminar</button></div>';
 }
-else if(dialog.type==='newjob'||dialog.type==='editjob'){const j=jobs.find(x=>x.id===dialog.id);h='<h3>'+(j?'Editar tarea':'Nueva tarea')+'</h3><div class="sub">'+esc(user(j?.userId??employee)?.name||'')+' · '+esc(fmt(j?.day||day))+'</div><form id="jobform" class="stack"><label class="field">Vehículo o referencia<input name="title" required value="'+esc(j?.title||'')+'" placeholder="Nissan Versa"></label><label class="field">Descripción<textarea name="detail" required>'+esc(j?.detail||'')+'</textarea></label><div class="row">'+footer+'<button class="btn">Guardar</button></div></form>'+(j?'<button class="btn note-cta" data-a="notejob" data-id="'+j.id+'">🔔 Enviar nota al técnico de esta actividad</button>':'')}
+else if(dialog.type==='newjob'||dialog.type==='editjob'){
+ const j=jobs.find(x=>x.id===dialog.id),newSource=dialog.sourceLogUuid?messages.find(m=>m.uuid===dialog.sourceLogUuid&&!m.copySourceNoticeId):null;
+ const targetEmployee=j?.userId??newSource?.employeeId??employee,targetDay=j?.day??newSource?.workDay??day;
+ h='<h3>'+(j||newSource?'Editar tarea':'Nueva tarea')+'</h3><div class="sub">'+esc(user(targetEmployee)?.name||'')+' · '+esc(fmt(targetDay))+'</div>'+
+ '<form id="jobform" class="stack"><label class="field">Vehículo o referencia<input name="title" required value="'+esc(j?.title||newSource?.vehicle||'')+'" placeholder="Nissan Versa"></label>'+
+ '<label class="field">Descripción<textarea name="detail" required>'+esc(j?.detail||'')+'</textarea></label><div class="row">'+footer+'<button class="btn">Guardar</button></div></form>'+
+ (j?'<button class="btn note-cta" data-a="notejob" data-id="'+j.id+'">🔔 Enviar nota al técnico de esta actividad</button>':'');
+}
 else if(dialog.type==='categories'){sheet=true;h='<div class="row"><h3>¿Qué querés comunicar?</h3><button class="btn ghost" data-a="close">×</button></div>'+opts.map(o=>'<button class="opt" data-a="category" data-cat="'+esc(o[0])+'"><span class="ico">'+o[2]+'</span><span class="grow"><strong>'+esc(o[0])+'</strong><small>'+esc(o[1])+'</small></span>›</button>').join('')}
 else if(dialog.type==='vehicles'){
  sheet=true;const j=list(me.id,TODAY),b=bookedFor(me.id,TODAY),standalone=dialog.category==='Registrar bitácora'?standaloneLogs(me.id,TODAY):[];
@@ -1657,7 +1706,19 @@ if(a==='atm-log-editor-draft'&&dialog?.type==='logeditor'&&me?.role!=='admin'&&c
  if(ctx.jobId!=null)drafts[me.id+':'+ctx.jobId]=draft;
  ctx=null;draft='';closeDialog();render();notify('Borrador de bitácora guardado');return;
 }
-if(a==='close'){if(dialog?.type==='logeditor'){ctx=null;draft='';closeDialog();render()}else closeDialog();return}if(a==='atm-account-menu'){if(me)showDialog({type:'accountmenu'});return}if(a==='backcalendar'){tab='calendar';thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='logout'){logout();return}if(a==='openusers'){tab='users';employee=null;thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='openlogs'){logDay=(tab==='calendar'?day:logDay);logWeek=logDay;logEmployee='all';logCategory='Registrar bitácora';tab='logs';thread=null;employee=null;ctx=null;draft='';closeDialog();render();return}if(a==='logsdate'){logDay=day;logWeek=day;logEmployee='all';logCategory='Registrar bitácora';tab='logs';closeDialog();render();return}if(a==='progressdate'&&me?.role==='admin'){logDay=day;logWeek=day;logEmployee='all';logCategory='Informar avance';tab='logs';closeDialog();render();return}if(a==='employee-logs'&&me?.role==='admin'&&typeof employee==='number'){logDay=day;logWeek=day;logEmployee=String(employee);logCategory='Registrar bitácora';tab='logs';employee=null;closeDialog();render();return}if(a==='logview'&&reportKinds.some(x=>x.cat===b.dataset.cat)){logCategory=b.dataset.cat;logSelected.clear();logSelectMode=false;logHoldDay=null;render();return}if(a==='logprev'||a==='lognext'){logDay=dayAdd(logDay,a==='logprev'?-7:7);logWeek=logDay;render();return}if(a==='logdate'){logDay=b.dataset.day;logWeek=logDay;render();return}if(a==='openlog'){const entry=logs.find(x=>x.id===Number(b.dataset.id));if(entry&&(me.role==='admin'||entry.employeeId===me.id))showDialog({type:'logdetail',id:entry.id});return}if(a==='newuser'){showDialog({type:'newuser'});return}if(a==='edituser'){showDialog({type:'edituser',id:Number(b.dataset.id)});return}if(a==='showmonth'&&me?.role==='admin'&&tab==='calendar'){monthCursor=day.slice(0,7)+'-01';showDialog({type:'monthpicker'});return}if(a==='monthprev'||a==='monthnext'){const mm=new Date(monthCursor+'T12:00:00Z');mm.setUTCMonth(mm.getUTCMonth()+(a==='monthprev'?-1:1));monthCursor=mm.toISOString().slice(0,7)+'-01';showDialog({type:'monthpicker'});return}if(a==='monthdate'){day=b.dataset.day;week=day;closeDialog();render();return}if(a==='newbooking'){showDialog({type:'newbooking'});return}if(a==='editbooking'){const ap=appointments.find(x=>x.id===Number(b.dataset.booking));if(ap){day=ap.day;week=ap.day;showDialog({type:'editbooking',id:ap.id})}return}if(a==='askdeletebooking'){showDialog({type:'deleteBooking',id:dialog.id});return}if(a==='confirmdeletebooking'){removeStuff();return}if(a==='newjob'){showDialog({type:'newjob'});return}if(a==='editjob'){if(me?.role==='admin'&&jobs.some(x=>x.id===Number(b.dataset.job)))showDialog({type:'editjob',id:Number(b.dataset.job)});return}if(a==='prev'||a==='next'){day=dayAdd(day,a==='prev'?-7:7);week=day;render();return}if(a==='date'){day=b.dataset.day;week=day;render();return}if(a==='employee'){employee=Number(b.dataset.id);render();return}if(a==='pending'){employee='pending';filter='all';render();return}if(a==='backemployee'){employee=null;render();return}if(a==='openchat'){thread=Number(b.dataset.id);ctx=null;draft='';adminAllowReply=false;render();return}if(a==='gotonotices'){tab='chat';thread=null;ctx=null;draft='';render();return}if(a==='replyinstruction'){const m=messages.find(x=>x.id===Number(b.dataset.id));if(canReplyTo(m)){ctx={category:'Respuesta a instrucción',replyTo:m.id,vehicle:m.vehicle||null,taskType:m.taskType||null,taskId:m.taskId||null};draft='';render();setTimeout(()=>main.querySelector('#draft')?.focus(),0)}return}if(a==='notebooking'||a==='notejob'){if(me?.role!=='admin')return;showDialog({type:'adminnote',taskType:a==='notebooking'?'booking':'job',taskId:Number(b.dataset.id)});return}if(a==='backchat'){thread=null;render();return}if(a==='plus'){showDialog({type:'categories'});return}if(a==='category'){category(b.dataset.cat);return}if(a==='backcategories'){showDialog({type:'categories'});return}if(a==='new-log-vehicle'&&me?.role!=='admin'&&dialog?.category==='Registrar bitácora'){showDialog({type:'newlogvehicle'});return}
+if(a==='close'){if(dialog?.type==='logeditor'){ctx=null;draft='';closeDialog();render()}else closeDialog();return}if(a==='atm-account-menu'){if(me)showDialog({type:'accountmenu'});return}if(a==='backcalendar'){tab='calendar';thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='logout'){logout();return}if(a==='openusers'){tab='users';employee=null;thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='openlogs'){logDay=(tab==='calendar'?day:logDay);logWeek=logDay;logEmployee='all';logCategory='Registrar bitácora';tab='logs';thread=null;employee=null;ctx=null;draft='';closeDialog();render();return}if(a==='logsdate'){logDay=day;logWeek=day;logEmployee='all';logCategory='Registrar bitácora';tab='logs';closeDialog();render();return}if(a==='progressdate'&&me?.role==='admin'){logDay=day;logWeek=day;logEmployee='all';logCategory='Informar avance';tab='logs';closeDialog();render();return}if(a==='employee-logs'&&me?.role==='admin'&&typeof employee==='number'){logDay=day;logWeek=day;logEmployee=String(employee);logCategory='Registrar bitácora';tab='logs';employee=null;closeDialog();render();return}if(a==='logview'&&reportKinds.some(x=>x.cat===b.dataset.cat)){logCategory=b.dataset.cat;logSelected.clear();logSelectMode=false;logHoldDay=null;render();return}if(a==='logprev'||a==='lognext'){logDay=dayAdd(logDay,a==='logprev'?-7:7);logWeek=logDay;render();return}if(a==='logdate'){logDay=b.dataset.day;logWeek=logDay;render();return}if(a==='openlog'){const entry=logs.find(x=>x.id===Number(b.dataset.id));if(entry&&(me.role==='admin'||entry.employeeId===me.id))showDialog({type:'logdetail',id:entry.id});return}if(a==='newuser'){showDialog({type:'newuser'});return}if(a==='edituser'){showDialog({type:'edituser',id:Number(b.dataset.id)});return}if(a==='showmonth'&&me?.role==='admin'&&tab==='calendar'){monthCursor=day.slice(0,7)+'-01';showDialog({type:'monthpicker'});return}if(a==='monthprev'||a==='monthnext'){const mm=new Date(monthCursor+'T12:00:00Z');mm.setUTCMonth(mm.getUTCMonth()+(a==='monthprev'?-1:1));monthCursor=mm.toISOString().slice(0,7)+'-01';showDialog({type:'monthpicker'});return}if(a==='monthdate'){day=b.dataset.day;week=day;closeDialog();render();return}if(a==='newbooking'){showDialog({type:'newbooking'});return}if(a==='editbooking'){const ap=appointments.find(x=>x.id===Number(b.dataset.booking));if(ap){day=ap.day;week=ap.day;showDialog({type:'editbooking',id:ap.id})}return}if(a==='askdeletebooking'){showDialog({type:'deleteBooking',id:dialog.id});return}if(a==='confirmdeletebooking'){removeStuff();return}if(a==='atm-edit-standalone'){
+ if(me?.role!=='admin')return;
+ const source=messages.find(m=>m.uuid===b.dataset.logUuid&&m.category==='Registrar bitácora'&&
+   !m.copySourceNoticeId&&m.taskId==null);
+ if(source){
+  const existing=atmMatchingScheduledWork(source.workDay,source.employeeId,source.vehicle);
+  if(existing?.kind==='job')showDialog({type:'editjob',id:existing.record.id});
+  else if(existing?.kind==='booking')showDialog({type:'editbooking',id:existing.record.id});
+  else showDialog({type:'newjob',sourceLogUuid:source.uuid});
+ }
+ return;
+}
+if(a==='newjob'){showDialog({type:'newjob'});return}if(a==='editjob'){if(me?.role==='admin'&&jobs.some(x=>x.id===Number(b.dataset.job)))showDialog({type:'editjob',id:Number(b.dataset.job)});return}if(a==='prev'||a==='next'){day=dayAdd(day,a==='prev'?-7:7);week=day;render();return}if(a==='date'){day=b.dataset.day;week=day;render();return}if(a==='employee'){employee=Number(b.dataset.id);render();return}if(a==='pending'){employee='pending';filter='all';render();return}if(a==='backemployee'){employee=null;render();return}if(a==='openchat'){thread=Number(b.dataset.id);ctx=null;draft='';adminAllowReply=false;render();return}if(a==='gotonotices'){tab='chat';thread=null;ctx=null;draft='';render();return}if(a==='replyinstruction'){const m=messages.find(x=>x.id===Number(b.dataset.id));if(canReplyTo(m)){ctx={category:'Respuesta a instrucción',replyTo:m.id,vehicle:m.vehicle||null,taskType:m.taskType||null,taskId:m.taskId||null};draft='';render();setTimeout(()=>main.querySelector('#draft')?.focus(),0)}return}if(a==='notebooking'||a==='notejob'){if(me?.role!=='admin')return;showDialog({type:'adminnote',taskType:a==='notebooking'?'booking':'job',taskId:Number(b.dataset.id)});return}if(a==='backchat'){thread=null;render();return}if(a==='plus'){showDialog({type:'categories'});return}if(a==='category'){category(b.dataset.cat);return}if(a==='backcategories'){showDialog({type:'categories'});return}if(a==='new-log-vehicle'&&me?.role!=='admin'&&dialog?.category==='Registrar bitácora'){showDialog({type:'newlogvehicle'});return}
 if(a==='back-log-vehicles'&&me?.role!=='admin'){showDialog({type:'vehicles',category:'Registrar bitácora'});return}
 if(a==='select-standalone'&&me?.role!=='admin'&&dialog?.category==='Registrar bitácora'){
  const vehicle=b.dataset.vehicle,record=standaloneLogs(me.id,TODAY).find(x=>x.record.vehicle===vehicle);
@@ -1698,7 +1759,20 @@ if(f.id==='atm-log-editor'&&me?.role!=='admin'&&dialog?.type==='logeditor'&&ctx?
   ctx={category:'Registrar bitácora',vehicle,jobId:'s'+vehicle.toLocaleLowerCase('es-SV'),taskType:'standalone',taskId:null,taskDetail:'',workDay:TODAY,priority:null,standalone:true};
   draft=drafts[me.id+':'+ctx.jobId]||'';showDialog({type:'logeditor'});return;
  }
- if(f.id==='jobform'){const d=new FormData(f),title=String(d.get('title')||'').trim(),detail=String(d.get('detail')||'').trim();if(!title||!detail)return;const j=jobs.find(x=>x.id===dialog.id);if(j){j.title=title;j.detail=detail}else jobs.push({id:nextJob++,userId:employee,day,title,detail,order:schedule(employee,day).length+1});closeDialog();render();notify('Actividad guardada');return}if(f.id==='compose'){send();return}});
+ if(f.id==='jobform'){
+ const d=new FormData(f),title=String(d.get('title')||'').trim(),detail=String(d.get('detail')||'').trim();
+ if(!title||!detail)return;
+ const j=jobs.find(x=>x.id===dialog.id);
+ const source=dialog.sourceLogUuid?messages.find(m=>m.uuid===dialog.sourceLogUuid&&!m.copySourceNoticeId):null;
+ if(j){j.title=title;j.detail=detail;}
+ else if(source){
+  const matching=atmMatchingScheduledWork(source.workDay,source.employeeId,source.vehicle);
+  if(matching){notify('Este vehículo ya tiene una actividad. Abrí esa actividad para modificarla.');return;}
+  jobs.push({uuid:source.uuid,id:nextJob++,userId:source.employeeId,day:source.workDay,
+   title,detail,order:schedule(source.employeeId,source.workDay).length+1});
+ }else jobs.push({id:nextJob++,userId:employee,day,title,detail,order:schedule(employee,day).length+1});
+ closeDialog();render();notify('Actividad guardada');return;
+}if(f.id==='compose'){send();return}});
 /* cloudInitialize replaces the simulator persistence and fake data. */
 /* ATM Manager v30 cloud layer. Preserves the v28 user interface and interactions. */
 const ATM_URL='https://mnwqvzhjkkoxcjxdolac.supabase.co';
