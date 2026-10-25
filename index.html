@@ -1131,16 +1131,19 @@ function atmDayLogsForCopy(source,scope){
 /* Antes de copiar: materializar como tarea real cada vehículo registrado por
    el técnico sin agendamiento. Solo el administrador autorizado hace el INSERT.
    No alterar ni sobrescribir tareas existentes. */
-async function atmEnsureStandaloneJobs(sourceDay,scope,actor){
+async function atmEnsureStandaloneJobs(sourceDay,destinationDay,scope,actor){
  const candidates=atmStandaloneSources(sourceDay,scope);
  if(!candidates.length)return 0;
  const {data:existing,error:readError}=await cloud.sb.from('atm_work_items')
-  .select('id,kind,vehicle,assigned_to,work_day').eq('work_day',sourceDay).limit(5000);
+  .select('id,kind,vehicle,assigned_to,work_day').in('work_day',[sourceDay,destinationDay]).limit(5000);
  if(readError)throw readError;
  if((existing||[]).length===5000)throw new Error('La fecha contiene demasiadas actividades para verificar duplicados.');
  const sameWork=(m,w)=>w.assigned_to===uuidFor(m.employeeId)&&
    atmVehicleKey(w.vehicle)===atmVehicleKey(m.vehicle);
- const missing=candidates.filter(m=>!(existing||[]).some(w=>sameWork(m,w)));
+ // If the vehicle is already scheduled at destination, preserve that task
+ // and copy only the prior bitácora as its read-only reference.
+ const missing=candidates.filter(m=>!(existing||[]).some(w=>sameWork(m,w)&&
+  (w.work_day===sourceDay||w.work_day===destinationDay)));
  if(!missing.length)return 0;
  const rows=missing.map(m=>({
   id:m.uuid,kind:'job',vehicle:m.vehicle,instructions:'',service_type:'Por definir',
@@ -1225,7 +1228,7 @@ async function transfer(move){
    throw new Error('Tu sesión cambió. Volvé a ingresar antes de trasladar registros.');
   let result=page.remoteResult;
   if(!result){
-   const created=await atmEnsureStandaloneJobs(source,page.scope,actor);
+   const created=await atmEnsureStandaloneJobs(source,destination,page.scope,actor);
    if(created){
     cloud.busy=false;cloud.ready=false;
     const refreshed=await cloudLoad();
