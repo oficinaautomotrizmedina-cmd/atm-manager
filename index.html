@@ -1281,7 +1281,14 @@ function atmCopiedLogsForRemoval(date,scope,workId=null,workKind='job'){
  return messages.filter(m=>{
   if(m.category!=='Registrar bitácora'||m.workDay!==date||
      !m.uuid||!m.copySourceNoticeId||!cloud.lastNotice.has(m.uuid))return false;
-  if(workId!==null)return m.taskType===workKind&&m.taskId===workId;
+  if(workId!==null){
+   if(m.taskType===workKind&&m.taskId===workId)return true;
+   if(m.taskId==null){
+    const linked=atmMatchingScheduledWork(m.workDay,m.employeeId,m.vehicle);
+    return linked?.kind===workKind&&linked.record.id===workId;
+   }
+   return false;
+  }
   if(scope==='all')return true;
   if(scope==='pending'||scope==='none')return false;
   return m.employeeId===Number(scope);
