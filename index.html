@@ -380,7 +380,7 @@ function atmStandaloneSources(date,scope){
  if(scope==='pending'||scope==='none')return [];
  const permitted=scope==='all'?new Set(staff().map(u=>Number(u.id))):new Set([Number(scope)]);
  for(const m of messages){
-  if(m.category!=='Registrar bitácora'||m.copySourceNoticeId||
+  if(!['Registrar bitácora','Informar avance'].includes(m.category)||m.copySourceNoticeId||
      m.workDay!==date||m.taskId!=null||!m.uuid||
      !cloud.lastNotice.has(m.uuid)||!permitted.has(Number(m.employeeId)))continue;
   const key=Number(m.employeeId)+'|'+atmVehicleKey(m.vehicle);
@@ -391,7 +391,7 @@ function atmStandaloneSources(date,scope){
  return [...groups.values()].sort((a,b)=>a.ts-b.ts);
 }
 const standaloneLogs=(id,d)=>{
- const matches=logs.filter(l=>l.category==='Registrar bitácora'&&l.taskType==='standalone'&&l.employeeId===Number(id)&&l.workDay===d&&!atmMatchingScheduledWork(d,id,l.vehicle));
+ const matches=logs.filter(l=>['Registrar bitácora','Informar avance'].includes(l.category)&&l.taskType==='standalone'&&l.employeeId===Number(id)&&l.workDay===d&&!atmMatchingScheduledWork(d,id,l.vehicle));
  const groups=new Map();
  for(const l of matches){
   const key=String(l.vehicle||'').trim().toLocaleLowerCase('es-SV');
@@ -977,13 +977,13 @@ else if(dialog.type==='newjob'||dialog.type==='editjob'){
 }
 else if(dialog.type==='categories'){sheet=true;h='<div class="row"><h3>¿Qué querés comunicar?</h3><button class="btn ghost" data-a="close">×</button></div>'+opts.map(o=>'<button class="opt" data-a="category" data-cat="'+esc(o[0])+'"><span class="ico">'+o[2]+'</span><span class="grow"><strong>'+esc(o[0])+'</strong><small>'+esc(o[1])+'</small></span>›</button>').join('')}
 else if(dialog.type==='vehicles'){
- sheet=true;const j=list(me.id,TODAY),b=bookedFor(me.id,TODAY),standalone=dialog.category==='Registrar bitácora'?standaloneLogs(me.id,TODAY):[];
- h='<div class="row"><h3>'+esc(dialog.category)+'</h3><button class="btn ghost" data-a="close">×</button></div><p class="sub">'+(dialog.category==='Registrar bitácora'?'Elegí un vehículo asignado o agregá uno nuevo para registrar su bitácora.':'Elegí el vehículo que tenés asignado para hoy.')+'</p>'+
+ sheet=true;const j=list(me.id,TODAY),b=bookedFor(me.id,TODAY),allowNew=['Registrar bitácora','Informar avance'].includes(dialog.category),standalone=allowNew?standaloneLogs(me.id,TODAY):[];
+ h='<div class="row"><h3>'+esc(dialog.category)+'</h3><button class="btn ghost" data-a="close">×</button></div><p class="sub">'+(allowNew?'Elegí un vehículo asignado o agregá uno nuevo para '+(dialog.category==='Informar avance'?'registrar su seguimiento.':'registrar su bitácora.'):'Elegí el vehículo que tenés asignado para hoy.')+'</p>'+
  (b.length?'<div class="section-title">VEHÍCULOS AGENDADOS</div>'+b.map(x=>'<button class="opt" data-a="selectbooking" data-booking="'+x.id+'"><span class="ico">🚘</span><span class="grow"><strong>'+esc(x.vehicle)+'</strong><small>'+esc(x.instructions)+'</small><span class="priority-label priority-'+esc(x.priority)+'" style="margin-top:6px">'+esc(PRIORITIES[x.priority].name)+'</span></span>›</button>').join(''):'')+
  (j.length?'<div class="section-title">TAREAS CON VEHÍCULO</div>'+j.map(x=>'<button class="opt" data-a="selectcar" data-job="'+x.id+'"><span class="ico">🚗</span><span class="grow"><strong>'+esc(x.title)+'</strong><small>'+esc(x.detail)+'</small></span>›</button>').join(''):'')+
- (standalone.length?'<div class="section-title">VEHÍCULOS REGISTRADOS EN BITÁCORA</div>'+standalone.map(x=>'<button class="opt" data-a="select-standalone" data-vehicle="'+esc(x.record.vehicle)+'"><span class="ico">📖</span><span class="grow"><strong>'+esc(x.record.vehicle)+'</strong></span>›</button>').join(''):'')+
- (dialog.category==='Registrar bitácora'?'<button type="button" class="opt atm-log-new-vehicle" data-a="new-log-vehicle"><span class="ico">＋</span><span class="grow"><strong>Agregar vehículo</strong><small>Marca, modelo y año · registrar solamente una bitácora</small></span>›</button>':'')+
- (!j.length&&!b.length&&dialog.category!=='Registrar bitácora'?'<div class="notice">No tenés vehículos asignados para hoy. El administrador puede agendarlos desde Calendario.</div>':'')+
+ (standalone.length?'<div class="section-title">VEHÍCULOS REGISTRADOS</div>'+standalone.map(x=>'<button class="opt" data-a="select-standalone" data-vehicle="'+esc(x.record.vehicle)+'"><span class="ico">📖</span><span class="grow"><strong>'+esc(x.record.vehicle)+'</strong></span>›</button>').join(''):'')+
+ (allowNew?'<button type="button" class="opt atm-log-new-vehicle" data-a="new-log-vehicle"><span class="ico">＋</span><span class="grow"><strong>Agregar vehículo</strong><small>Marca, modelo y año · '+(dialog.category==='Informar avance'?'registrar seguimiento':'registrar bitácora')+'</small></span>›</button>':'')+
+ (!j.length&&!b.length&&!allowNew?'<div class="notice">No tenés vehículos asignados para hoy. El administrador puede agendarlos desde Calendario.</div>':'')+
  '<button class="btn ghost" data-a="backcategories">Volver</button>';
 }
 
@@ -995,10 +995,10 @@ else if(dialog.type==='logeditor'){
  '<div class="row"><button type="button" class="btn ghost" data-a="atm-log-editor-draft">Guardar borrador</button><button class="btn" type="submit">Registrar bitácora</button></div></form>';
 }
 else if(dialog.type==='newlogvehicle'){
- sheet=true;h='<div class="row"><h3>Agregar vehículo a bitácora</h3><button class="btn ghost" data-a="close">×</button></div>'+
- 
+ const isFollowup=dialog.category==='Informar avance';
+ sheet=true;h='<div class="row"><h3>Agregar vehículo a '+(isFollowup?'seguimiento':'bitácora')+'</h3><button class="btn ghost" data-a="close">×</button></div>'+
  '<form class="stack" id="atm-new-log-vehicle"><label class="field">Marca, modelo y año<input name="vehicle" maxlength="130" required placeholder="Ej. Mitsubishi Mighty 1998" autocomplete="off"></label>'+
- '<div class="row"><button type="button" class="btn ghost" data-a="back-log-vehicles">Volver</button><button type="submit" class="btn">Continuar a bitácora</button></div></form>';
+ '<div class="row"><button type="button" class="btn ghost" data-a="back-log-vehicles">Volver</button><button type="submit" class="btn">Continuar a '+(isFollowup?'seguimiento':'bitácora')+'</button></div></form>';
 }
 else if(dialog.type==='logdelete'){
  const d=dialog,count=Number(d.preview?.count||0);
@@ -1788,7 +1788,7 @@ if(a==='atm-log-editor-draft'&&dialog?.type==='logeditor'&&me?.role!=='admin'&&c
 }
 if(a==='close'){if(dialog?.type==='logeditor'){ctx=null;draft='';closeDialog();render()}else closeDialog();return}if(a==='atm-account-menu'){if(me)showDialog({type:'accountmenu'});return}if(a==='backcalendar'){tab='calendar';thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='logout'){logout();return}if(a==='openusers'){tab='users';employee=null;thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='openlogs'){logDay=(tab==='calendar'?day:logDay);logWeek=logDay;logEmployee='all';logCategory='Registrar bitácora';tab='logs';thread=null;employee=null;ctx=null;draft='';closeDialog();render();return}if(a==='logsdate'){logDay=day;logWeek=day;logEmployee='all';logCategory='Registrar bitácora';tab='logs';closeDialog();render();return}if(a==='progressdate'&&me?.role==='admin'){logDay=day;logWeek=day;logEmployee='all';logCategory='Informar avance';tab='logs';closeDialog();render();return}if(a==='employee-logs'&&me?.role==='admin'&&typeof employee==='number'){logDay=day;logWeek=day;logEmployee=String(employee);logCategory='Registrar bitácora';tab='logs';employee=null;closeDialog();render();return}if(a==='logview'&&reportKinds.some(x=>x.cat===b.dataset.cat)){logCategory=b.dataset.cat;logSelected.clear();logSelectMode=false;logHoldDay=null;render();return}if(a==='logprev'||a==='lognext'){logDay=dayAdd(logDay,a==='logprev'?-7:7);logWeek=logDay;render();return}if(a==='logdate'){logDay=b.dataset.day;logWeek=logDay;render();return}if(a==='openlog'){const entry=logs.find(x=>x.id===Number(b.dataset.id));if(entry&&(me.role==='admin'||entry.employeeId===me.id))showDialog({type:'logdetail',id:entry.id});return}if(a==='newuser'){showDialog({type:'newuser'});return}if(a==='edituser'){showDialog({type:'edituser',id:Number(b.dataset.id)});return}if(a==='showmonth'&&me?.role==='admin'&&tab==='calendar'){monthCursor=day.slice(0,7)+'-01';showDialog({type:'monthpicker'});return}if(a==='monthprev'||a==='monthnext'){const mm=new Date(monthCursor+'T12:00:00Z');mm.setUTCMonth(mm.getUTCMonth()+(a==='monthprev'?-1:1));monthCursor=mm.toISOString().slice(0,7)+'-01';showDialog({type:'monthpicker'});return}if(a==='monthdate'){day=b.dataset.day;week=day;closeDialog();render();return}if(a==='newbooking'){showDialog({type:'newbooking'});return}if(a==='editbooking'){const ap=appointments.find(x=>x.id===Number(b.dataset.booking));if(ap){day=ap.day;week=ap.day;showDialog({type:'editbooking',id:ap.id})}return}if(a==='askdeletebooking'){showDialog({type:'deleteBooking',id:dialog.id});return}if(a==='confirmdeletebooking'){removeStuff();return}if(a==='atm-edit-standalone'){
  if(me?.role!=='admin')return;
- const source=messages.find(m=>m.uuid===b.dataset.logUuid&&m.category==='Registrar bitácora'&&
+ const source=messages.find(m=>m.uuid===b.dataset.logUuid&&['Registrar bitácora','Informar avance'].includes(m.category)&&
    !m.copySourceNoticeId&&m.taskId==null);
  if(source){
   const existing=atmMatchingScheduledWork(source.workDay,source.employeeId,source.vehicle);
@@ -1798,11 +1798,17 @@ if(a==='close'){if(dialog?.type==='logeditor'){ctx=null;draft='';closeDialog();r
  }
  return;
 }
-if(a==='newjob'){showDialog({type:'newjob'});return}if(a==='editjob'){if(me?.role==='admin'&&jobs.some(x=>x.id===Number(b.dataset.job)))showDialog({type:'editjob',id:Number(b.dataset.job)});return}if(a==='prev'||a==='next'){day=dayAdd(day,a==='prev'?-7:7);week=day;render();return}if(a==='date'){day=b.dataset.day;week=day;render();return}if(a==='employee'){employee=Number(b.dataset.id);render();return}if(a==='pending'){employee='pending';filter='all';render();return}if(a==='backemployee'){employee=null;render();return}if(a==='openchat'){thread=Number(b.dataset.id);ctx=null;draft='';adminAllowReply=false;render();return}if(a==='gotonotices'){tab='chat';thread=null;ctx=null;draft='';render();return}if(a==='replyinstruction'){const m=messages.find(x=>x.id===Number(b.dataset.id));if(canReplyTo(m)){ctx={category:'Respuesta a instrucción',replyTo:m.id,vehicle:m.vehicle||null,taskType:m.taskType||null,taskId:m.taskId||null};draft='';render();setTimeout(()=>main.querySelector('#draft')?.focus(),0)}return}if(a==='notebooking'||a==='notejob'){if(me?.role!=='admin')return;showDialog({type:'adminnote',taskType:a==='notebooking'?'booking':'job',taskId:Number(b.dataset.id)});return}if(a==='backchat'){thread=null;render();return}if(a==='plus'){showDialog({type:'categories'});return}if(a==='category'){category(b.dataset.cat);return}if(a==='backcategories'){showDialog({type:'categories'});return}if(a==='new-log-vehicle'&&me?.role!=='admin'&&dialog?.category==='Registrar bitácora'){showDialog({type:'newlogvehicle'});return}
-if(a==='back-log-vehicles'&&me?.role!=='admin'){showDialog({type:'vehicles',category:'Registrar bitácora'});return}
-if(a==='select-standalone'&&me?.role!=='admin'&&dialog?.category==='Registrar bitácora'){
+if(a==='newjob'){showDialog({type:'newjob'});return}if(a==='editjob'){if(me?.role==='admin'&&jobs.some(x=>x.id===Number(b.dataset.job)))showDialog({type:'editjob',id:Number(b.dataset.job)});return}if(a==='prev'||a==='next'){day=dayAdd(day,a==='prev'?-7:7);week=day;render();return}if(a==='date'){day=b.dataset.day;week=day;render();return}if(a==='employee'){employee=Number(b.dataset.id);render();return}if(a==='pending'){employee='pending';filter='all';render();return}if(a==='backemployee'){employee=null;render();return}if(a==='openchat'){thread=Number(b.dataset.id);ctx=null;draft='';adminAllowReply=false;render();return}if(a==='gotonotices'){tab='chat';thread=null;ctx=null;draft='';render();return}if(a==='replyinstruction'){const m=messages.find(x=>x.id===Number(b.dataset.id));if(canReplyTo(m)){ctx={category:'Respuesta a instrucción',replyTo:m.id,vehicle:m.vehicle||null,taskType:m.taskType||null,taskId:m.taskId||null};draft='';render();setTimeout(()=>main.querySelector('#draft')?.focus(),0)}return}if(a==='notebooking'||a==='notejob'){if(me?.role!=='admin')return;showDialog({type:'adminnote',taskType:a==='notebooking'?'booking':'job',taskId:Number(b.dataset.id)});return}if(a==='backchat'){thread=null;render();return}if(a==='plus'){showDialog({type:'categories'});return}if(a==='category'){category(b.dataset.cat);return}if(a==='backcategories'){showDialog({type:'categories'});return}if(a==='new-log-vehicle'&&me?.role!=='admin'&&['Registrar bitácora','Informar avance'].includes(dialog?.category)){showDialog({type:'newlogvehicle',category:dialog.category});return}
+if(a==='back-log-vehicles'&&me?.role!=='admin'&&dialog?.type==='newlogvehicle'){showDialog({type:'vehicles',category:dialog.category});return}
+if(a==='select-standalone'&&me?.role!=='admin'&&['Registrar bitácora','Informar avance'].includes(dialog?.category)){
  const vehicle=b.dataset.vehicle,record=standaloneLogs(me.id,TODAY).find(x=>x.record.vehicle===vehicle);
- if(record){ctx={category:'Registrar bitácora',vehicle,jobId:'s'+vehicle.toLocaleLowerCase('es-SV'),taskType:'standalone',taskId:null,taskDetail:'',workDay:TODAY,priority:null,standalone:true};draft=drafts[me.id+':'+ctx.jobId]||'';showDialog({type:'logeditor'})}
+ if(record){
+  const category=dialog.category;
+  ctx={category,vehicle,jobId:'s'+atmVehicleKey(vehicle),taskType:'standalone',taskId:null,taskDetail:'',workDay:TODAY,priority:null,standalone:true};
+  draft=category==='Registrar bitácora'?drafts[me.id+':'+ctx.jobId]||'':'';
+  if(category==='Registrar bitácora')showDialog({type:'logeditor'});
+  else{closeDialog();render();setTimeout(()=>main.querySelector('#draft')?.focus(),0)}
+ }
  return;
 }
 if(a==='selectbooking'){const ap=appointments.find(x=>x.id===Number(b.dataset.booking)&&x.userId===me.id);if(ap){ctx={category:dialog.category,vehicle:ap.vehicle,jobId:'a'+ap.id,bookingId:ap.id,taskType:'booking',taskId:ap.id,taskDetail:ap.instructions,workDay:ap.day,priority:ap.priority};draft=dialog.category==='Registrar bitácora'?drafts[me.id+':'+ctx.jobId]||'':'';if(dialog.category==='Registrar bitácora')showDialog({type:'logeditor'});else{closeDialog();render()}}return}if(a==='selectcar'){const j=jobs.find(x=>x.id===Number(b.dataset.job)&&x.userId===me.id);if(j){ctx={category:dialog.category,vehicle:j.title,jobId:j.id,taskType:'job',taskId:j.id,taskDetail:j.detail,workDay:j.day,priority:null};draft=dialog.category==='Registrar bitácora'?drafts[me.id+':'+j.id]||'':'';if(dialog.category==='Registrar bitácora')showDialog({type:'logeditor'});else{closeDialog();render()}}return}if(a==='clearctx'){ctx=null;draft='';render();return}if(a==='savedraft'){if(ctx?.jobId)drafts[me.id+':'+ctx.jobId]=draft;ctx=null;draft='';render();notify('Bitácora guardada como borrador');return}if(a==='chatmenu'||a==='allmenu'){showDialog({type:a});return}if(a==='viewlogs'){showDialog({type:'logs'});return}if(a==='clearask'||a==='clearallask'){showDialog({type:a});return}if(a==='clearconfirm'){clearChats();return}if(a==='copy'||a==='move'){transfer(a==='move');return}if(a==='atm-remove-copied-logs'&&me?.role==='admin'&&tab==='logs'){showDialog({type:'deleteCopiedLogs',src:logDay,scope:logEmployee});return}if(a==='deleteconfirm'){removeStuff();return}});
@@ -1835,9 +1841,24 @@ if(f.id==='atm-log-editor'&&me?.role!=='admin'&&dialog?.type==='logeditor'&&ctx?
   }
  if(f.id==='atm-new-log-vehicle'&&me?.role!=='admin'&&dialog?.type==='newlogvehicle'){
   const data=new FormData(f),vehicle=String(data.get('vehicle')||'').trim().replace(/\s+/g,' ');
-  if(!vehicle||vehicle.length>130)return;
-  ctx={category:'Registrar bitácora',vehicle,jobId:'s'+vehicle.toLocaleLowerCase('es-SV'),taskType:'standalone',taskId:null,taskDetail:'',workDay:TODAY,priority:null,standalone:true};
-  draft=drafts[me.id+':'+ctx.jobId]||'';showDialog({type:'logeditor'});return;
+  const category=dialog.category;
+  if(!vehicle||vehicle.length>130||!['Registrar bitácora','Informar avance'].includes(category))return;
+  // Reutilizar la asignación si ya existe: nunca crear otro registro independiente.
+  const assigned=atmMatchingScheduledWork(TODAY,me.id,vehicle);
+  if(assigned){
+   const record=assigned.record;
+   ctx={category,vehicle:assigned.kind==='job'?record.title:record.vehicle,
+    jobId:assigned.kind==='job'?record.id:'a'+record.id,taskType:assigned.kind,taskId:record.id,
+    taskDetail:assigned.kind==='job'?record.detail:record.instructions,workDay:record.day,
+    priority:assigned.kind==='booking'?record.priority:null};
+  }else{
+   ctx={category,vehicle,jobId:'s'+atmVehicleKey(vehicle),taskType:'standalone',
+    taskId:null,taskDetail:'',workDay:TODAY,priority:null,standalone:true};
+  }
+  draft=category==='Registrar bitácora'?drafts[me.id+':'+ctx.jobId]||'':'';
+  if(category==='Registrar bitácora')showDialog({type:'logeditor'});
+  else{closeDialog();render();setTimeout(()=>main.querySelector('#draft')?.focus(),0)}
+  return;
  }
  if(f.id==='jobform'){
  const d=new FormData(f),title=String(d.get('title')||'').trim(),detail=String(d.get('detail')||'').trim();
@@ -2023,7 +2044,7 @@ function noticeToUI(row,workByUuid){let owner=uiFor(row.target_employee_id),send
 function reportLogs(){logs=[];nextLog=1;messages.forEach(m=>{if(m.copySourceNoticeId||!['Informar avance','Reportar problema','Registrar bitácora'].includes(m.category))return;
  const w=m.taskType==='job'?jobs.find(x=>x.id===m.taskId):appointments.find(x=>x.id===m.taskId);
  const workDay=m.workDay||w?.day||new Date(m.ts).toISOString().slice(0,10);
- logs.push({uuid:m.uuid,id:nextLog++,employeeId:m.employeeId,workDay,taskType:m.taskType||(m.taskId==null&&m.category==='Registrar bitácora'?'standalone':'booking'),taskId:m.taskId,vehicle:m.vehicle||w?.vehicle||w?.title||'Actividad',taskDetail:m.taskDetail||w?.instructions||w?.detail||'',priority:m.priority||w?.priority||null,category:m.category,text:m.text,copySourceDay:m.copySourceDay||null,copySourceNoticeId:m.copySourceNoticeId||null,ts:m.ts}); });}
+ logs.push({uuid:m.uuid,id:nextLog++,employeeId:m.employeeId,workDay,taskType:m.taskType||(m.taskId==null&&['Registrar bitácora','Informar avance'].includes(m.category)?'standalone':'booking'),taskId:m.taskId,vehicle:m.vehicle||w?.vehicle||w?.title||'Actividad',taskDetail:m.taskDetail||w?.instructions||w?.detail||'',priority:m.priority||w?.priority||null,category:m.category,text:m.text,copySourceDay:m.copySourceDay||null,copySourceNoticeId:m.copySourceNoticeId||null,ts:m.ts}); });}
 async function cloudList(table,order){const all=[];for(let offset=0;offset<10000;offset+=500){let q=cloud.sb.from(table).select('*').range(offset,offset+499);if(order)q=q.order(order,{ascending:true});const {data,error}=await q;if(error)throw error;all.push(...(data||[]));if((data||[]).length<500)break;}return all;}
 async function cloudLoad(){if(!cloud.sb||cloud.busy||cloud.loading||!me)return;cloud.loading=true;const priorUuid=me.uuid;try{
  const [profiles,remoteWork,remoteMessages,readResult,remoteCalendar]=await Promise.all([
