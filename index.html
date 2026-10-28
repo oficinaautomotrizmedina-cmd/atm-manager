@@ -447,17 +447,22 @@ function atmStandaloneReferenceHTML(employeeId,date){
 }
 function taskLogsHTML(item){
  if(me?.role!=='admin'||(tab!=='tasks'&&tab!=='calendar'))return '';
- const r=item.record,arr=item.kind==='standalone'?item.logs:logs.filter(l=>{
-  if(l.category!=='Registrar bitácora'||l.employeeId!==r.userId||l.workDay!==r.day)return false;
+ const r=item.record,related=item.kind==='standalone'?item.logs:logs.filter(l=>{
+  if(!['Registrar bitácora','Informar avance'].includes(l.category)||l.employeeId!==r.userId||l.workDay!==r.day)return false;
   if(l.taskId!=null)return l.taskType===item.kind&&Number(l.taskId)===Number(r.id);
   const linked=atmMatchingScheduledWork(r.day,r.userId,l.vehicle);
   return linked?.kind===item.kind&&linked.record.id===r.id;
  });
  const reference=item.kind==='standalone'?'':atmReferenceHTML(atmWorkReferences(item));
- const real=arr?.length?'<div class="atm-work-log"><strong>📖 Bitácora del día ('+arr.length+')</strong>'+
- arr.slice().sort((a,b)=>a.ts-b.ts).map(l=>'<div class="atm-work-log-entry"><div class="atm-work-log-text">'+esc(l.text)+'<small>'+esc(logClock(l.ts))+'</small></div>'+
- (l.uuid&&cloud.lastNotice.has(l.uuid)?'<button type="button" class="atm-work-log-delete" data-a="atm-inline-log-delete" data-uuid="'+esc(l.uuid)+'" title="Eliminar esta bitácora" aria-label="Eliminar esta bitácora">×</button>':'')+'</div>').join('')+'</div>':'';
- return reference+real;
+ const section=(category,label)=>{
+  const arr=(related||[]).filter(l=>l.category===category);
+  if(!arr.length)return '';
+  return '<div class="atm-work-log"><strong>'+label+' ('+arr.length+')</strong>'+
+   arr.slice().sort((a,b)=>a.ts-b.ts).map(l=>'<div class="atm-work-log-entry"><div class="atm-work-log-text">'+esc(l.text)+'<small>'+esc(logClock(l.ts))+'</small></div>'+
+    (category==='Registrar bitácora'&&l.uuid&&cloud.lastNotice.has(l.uuid)?'<button type="button" class="atm-work-log-delete" data-a="atm-inline-log-delete" data-uuid="'+esc(l.uuid)+'" title="Eliminar esta bitácora" aria-label="Eliminar esta bitácora">×</button>':'')+
+    '</div>').join('')+'</div>';
+ };
+ return reference+section('Registrar bitácora','📖 Bitácora del día')+section('Informar avance','📝 Seguimiento del día');
 }
 function workWithLogsHTML(item,i,editable,draggable){
  return '<div class="atm-work-with-log">'+workHTML(item,i,editable,draggable)+taskLogsHTML(item)+'</div>';
@@ -479,7 +484,7 @@ function workHTML(item,i,adminCanEdit=false,draggable=false){
   return '<'+(canConvert?'button':'div')+' class="atm-standalone-card"'+
    (canConvert&&first?.uuid?' type="button" data-a="atm-edit-standalone" data-log-uuid="'+esc(first.uuid)+'"':'')+
    '><span class="numb">'+(i+1)+'</span><span class="details"><strong>'+esc(item.record.vehicle)+'</strong>'+
-   '<small>'+(canConvert?'TAREA · TOCÁ PARA EDITAR':'BITÁCORA · VEHÍCULO SIN AGENDAR')+'</small></span>'+
+   '<small>'+(canConvert?'TAREA · TOCÁ PARA EDITAR':item.logs?.some(l=>l.category==='Registrar bitácora')?'BITÁCORA · VEHÍCULO SIN AGENDAR':'SEGUIMIENTO · VEHÍCULO SIN AGENDAR')+'</small></span>'+
    (canConvert?'<span class="tech-chevron" aria-hidden="true">›</span>':'')+
    '</'+(canConvert?'button':'div')+'>';
  }
