@@ -958,6 +958,8 @@ function chatHTML(){
    (canReplyTo(m)?'<button class="reply-action" data-a="replyinstruction" data-id="'+m.id+'">↩ Responder a esta instrucción</button>':
    atmPendingReplyTo(m)?'<button class="reply-action" data-a="atm-retry-chat-reply" data-id="'+m.id+'">↻ Reintentar respuesta pendiente</button>':'')+
    (m.allowReply&&!mine&&wasAnswered?'<div class="reply-hint">✓ Respuesta enviada</div>':'')+
+   (mine&&!isAdmin&&m.uuid&&!cloud.lastNotice.has(m.uuid)?
+    '<button type="button" class="reply-action atm-retry-unsent" data-a="atm-retry-unsent-notice" data-notice="'+esc(m.uuid)+'">↻ Reintentar envío pendiente</button>':'')+
    '<div class="atm-msg-meta"><span class="time">'+esc(logClock(m.ts))+'</span>'+
    (mine?'<span class="atm-msg-checks'+(m.uuid&&cloud.lastNotice.has(m.uuid)?' confirmed':'')+'" role="img" aria-label="'+(m.uuid&&cloud.lastNotice.has(m.uuid)?'Guardado en el sistema':'Pendiente de envío')+'" title="'+(m.uuid&&cloud.lastNotice.has(m.uuid)?'Guardado en el sistema; no indica lectura':'Pendiente de confirmación del servidor')+'">'+(m.uuid&&cloud.lastNotice.has(m.uuid)?'✓✓':'✓')+'</span>':'')+'</div></div>';
  }).join('');
@@ -2311,6 +2313,20 @@ if(a==='atm-chat-delete-ask'&&dialog?.type==='atm-chat-message-actions'&&me?.rol
 if(a==='atm-chat-delete-confirm'&&dialog?.type==='atm-chat-message-delete'&&me?.role==='admin'){
  atmDeleteAdminChatMessage();return;
 }
+if(a==='atm-retry-unsent-notice'&&me?.role!=='admin'&&tab==='chat'){
+ const pending=messages.find(x=>x.uuid===b.dataset.notice);
+ if(!pending||pending.sender!==me.id||pending.employeeId!==me.id||cloud.lastNotice.has(pending.uuid))return;
+ if(!cloud.ready){notify('Tu mensaje sigue pendiente. Iniciá sesión y conectate para reintentar.');return;}
+ if(cloud.busy||cloud.loading){notify('Sincronización en curso. Revisá la confirmación del mensaje.');return;}
+ atmRememberPending();
+ atmRetryPendingAndSync().then(()=>{
+  if(!me)return;
+  render(true);
+  notify(cloud.lastNotice.has(pending.uuid)?'Mensaje enviado y confirmado':
+   'El mensaje sigue pendiente. Revisá el error indicado en la barra de sincronización.');
+ }).catch(e=>{console.warn('Reintento de mensaje de IA Chat:',e);notify('No se pudo confirmar el envío. El mensaje permanece pendiente.');});
+ return;
+}
 if(a==='atm-retry-chat-reply'&&me?.role!=='admin'&&tab==='chat'){
  const original=messages.find(x=>x.id===Number(b.dataset.id));
  const unsent=atmPendingReplyTo(original);
@@ -2801,7 +2817,9 @@ async function atmDeliverPending(){
  }catch(e){
   console.warn('Error real al recuperar avisos pendientes',e);
   const code=String(e?.code||e?.status||'sin código').slice(0,30);
-  busyStatus('Avisos pendientes · Error '+code+' · Tocá para reintentar');
+  const cause=code==='42501'||Number(e?.status)===403?'Permisos del servidor':
+   code==='23503'?'Referencia del mensaje no válida':code==='23514'?'Validación del mensaje':'Sincronización fallida';
+  busyStatus('Avisos pendientes · '+cause+' · Error '+code+' · Tocá para reintentar');
   cloud.retryPaused=true;
  }
  finally{cloud.busy=false;}
