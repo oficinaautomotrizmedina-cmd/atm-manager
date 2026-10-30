@@ -2425,7 +2425,7 @@ root.addEventListener('pointerdown',e=>{
  if(me?.role!=='admin'||tab!=='chat'||thread==null||dialog||e.button!==0||e.target.closest('button'))return;
  const card=e.target.closest('[data-atm-chat-manage]');
  if(!card||!main.contains(card))return;
- const uuid=card.dataset.atmChatOwn,m=messages.find(x=>x.uuid===uuid);
+ const uuid=card.dataset.atmChatManage,m=messages.find(x=>x.uuid===uuid);
  if(!atmCanAdminManageChatMessage(m))return;
  atmCancelChatHold();
  const hold={pid:e.pointerId,x:e.clientX,y:e.clientY,card,uuid,timer:null};
@@ -2447,7 +2447,7 @@ root.addEventListener('contextmenu',e=>{
  const card=e.target.closest('[data-atm-chat-manage]');
  if(!card||me?.role!=='admin'||tab!=='chat'||thread==null)return;
  e.preventDefault();
- const m=messages.find(x=>x.uuid===card.dataset.atmChatOwn);
+ const m=messages.find(x=>x.uuid===card.dataset.atmChatManage);
  if(!dialog&&atmCanAdminManageChatMessage(m)){
   atmCancelChatHold();atmChatSuppressClickUntil=Date.now()+850;
   showDialog({type:'atm-chat-message-actions',uuid:m.uuid});
@@ -2461,7 +2461,7 @@ root.addEventListener('click',e=>{
 root.addEventListener('keydown',e=>{
  if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-atm-chat-manage]')){
   e.preventDefault();
-  const m=messages.find(x=>x.uuid===e.target.dataset.atmChatOwn);
+  const m=messages.find(x=>x.uuid===e.target.dataset.atmChatManage);
   if(!dialog&&atmCanAdminManageChatMessage(m))showDialog({type:'atm-chat-message-actions',uuid:m.uuid});
  }
 },true);
