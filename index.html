@@ -470,7 +470,8 @@ function atmMarkActiveWork(dayKey,workId){
   uuid:crypto.randomUUID(),id:nextMsg++,employeeId:me.id,sender:me.id,
   category:'Registrar bitácora',vehicle:vehicle||'Actividad',workDay:dayKey,
   text:ATM_FOCUS_PREFIX+JSON.stringify({day:dayKey,kind,uuid}),
-  taskType:null,taskId:null,allowReply:false,replyTo:null,ts:Date.now()
+  taskType:null,taskId:null,allowReply:false,replyTo:null,
+  ts:Math.max(Date.now(),1+messages.reduce((last,m)=>m.employeeId===me.id&&atmFocusRead(m)?.day===dayKey?Math.max(last,m.ts||0):last,0))
  });
  render(true);
  return true;
@@ -1185,8 +1186,8 @@ if(highlightWork&&tab==='calendar'){
  if(work){work.classList.add('atm-push-target');main.scrollTop+=work.getBoundingClientRect().top-main.getBoundingClientRect().top-100;}
  highlightWork=null;
 }}
-function render(keepMainScroll=false){root.classList.toggle('is-admin',me?.role==='admin');head.innerHTML='<button type="button" class="mark" data-a="atm-account-menu" aria-label="Abrir menú del taller" title="Opciones del taller">'+logoIMG()+'</button><div class="grow"><strong>ATM Manager</strong><small>AUTOMOTRIZ MEDINA SV</small></div>'+(me?'<button data-a="openlogs" class="header-logicon'+(tab==='logs'?' on':'')+'" aria-label="Bitácoras del día" title="Bitácoras"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7a3 3 0 0 1 3 3v14H7a3 3 0 0 0-3-3V4Zm16 0h-6a3 3 0 0 0-3 3v14h6a3 3 0 0 1 3-3V4Z"/></svg></button>':'');
-if(!me||(tab==='chat'&&(me?.role!=='admin'||thread))){nav.style.display='none'}else{const tabs=me.role==='admin'?[['calendar','Calendario','▦'],['tasks','Tareas','☑'],['chat','Chat','▤']]:[['calendar','Calendario','▦'],['records','Registros','▤'],['chat','IA Chat','☏']];nav.style.display='grid';nav.style.gridTemplateColumns=`repeat(${tabs.length},1fr)`;nav.innerHTML=tabs.map(([k,t,icon])=>'<button data-tab="'+k+'" class="'+(k===tab||(k==='records'&&tab==='logs'&&me?.role!=='admin')?'active':'')+'"><span class="symbol">'+icon+'</span>'+t+(k==='chat'&&totalUnread()?'<span class="nav-unread">'+totalUnread()+'</span>':k==='calendar'&&unreadCalendar().length?'<span class="nav-unread">'+unreadCalendar().length+'</span>':'')+'</button>').join('')}
+function render(keepMainScroll=false){root.classList.toggle('is-admin',me?.role==='admin');head.innerHTML='<button type="button" class="mark" data-a="atm-account-menu" aria-label="Abrir menú del taller" title="Opciones del taller">'+logoIMG()+'</button><div class="grow"><strong>ATM Manager</strong><small>AUTOMOTRIZ MEDINA SV</small></div>'+(me?.role==='admin'?'<button data-a="openlogs" class="header-logicon'+(tab==='logs'?' on':'')+'" aria-label="Bitácoras del día" title="Bitácoras"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7a3 3 0 0 1 3 3v14H7a3 3 0 0 0-3-3V4Zm16 0h-6a3 3 0 0 0-3 3v14h6a3 3 0 0 1 3-3V4Z"/></svg></button>':'');
+if(!me||(tab==='chat'&&(me?.role!=='admin'||thread))){nav.style.display='none'}else{const tabs=me.role==='admin'?[['calendar','Calendario','▦'],['tasks','Tareas','☑'],['chat','Chat','▤']]:[['calendar','Calendario','▦'],['records','Registros','📋'],['chat','IA Chat','▤']];nav.style.display='grid';nav.style.gridTemplateColumns=`repeat(${tabs.length},1fr)`;nav.innerHTML=tabs.map(([k,t,icon])=>'<button data-tab="'+k+'" class="'+(k===tab||(k==='records'&&tab==='logs'&&me?.role!=='admin')?'active':'')+'"><span class="symbol">'+icon+'</span>'+t+(k==='chat'&&totalUnread()?'<span class="nav-unread">'+totalUnread()+'</span>':k==='calendar'&&unreadCalendar().length?'<span class="nav-unread">'+unreadCalendar().length+'</span>':'')+'</button>').join('')}
 drawMain(keepMainScroll);overlay.innerHTML=modalHTML();
 if(tab==='chat'&&!cloud.retryPaused){const status=root.querySelector('#atm-cloud-status');if(status&&['Sincronizando…','Guardado en Supabase'].includes(status.textContent))status.style.display='none';}
 if(!suppressHistory){saveDemo();syncHistory()}}
