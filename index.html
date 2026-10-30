@@ -1096,9 +1096,24 @@ if(dialog.type==='accountmenu'){
  '<button class="opt" data-a="atm-push-enable"><span class="ico">🔔</span><span><strong>Activar notificaciones</strong><small>Registrar este teléfono para recibir avisos de chat</small></span></button>'+
  '<button class="opt" data-a="atm-push-test"><span class="ico">📳</span><span><strong>Probar notificaciones</strong><small>Enviar una prueba solamente a tus dispositivos</small></span></button>'+
  '<button class="opt" data-a="gotonotices"><span class="ico">▤</span><span><strong>Notificaciones</strong></span></button>'+
+ (me?.uuid&&atmReadDeniedNotices(me.uuid)?.length?'<button class="opt" data-a="atm-denied-open"><span class="ico">📥</span><span><strong>Avisos no entregados ('+atmReadDeniedNotices(me.uuid).length+')</strong><small>Respaldados en este teléfono · revisar y exportar</small></span></button>':'')+
  (me?.role==='admin'&&atmReadHeldCopies(me.uuid)?.length?'<button class="opt" data-a="atm-held-copies-open"><span class="ico">📖</span><span><strong>Copias de bitácoras resguardadas ('+atmReadHeldCopies(me.uuid).length+')</strong><small>Solo en este dispositivo · exportar respaldo</small></span></button>':'')+
  (me?.role==='admin'?'<button class="opt" data-a="openusers"><span class="ico">👤</span><span><strong>Usuarios</strong></span></button><button class="opt" data-a="atm-cleanup-open"><span class="ico">🧹</span><span><strong>Limpiar historial</strong><small>Seleccionar fechas y consultar registros</small></span></button>':'')+
  '<button class="opt atm-menu-logout" data-a="logout"><span class="ico">↪</span><span><strong>Cerrar sesión</strong></span></button>';
+}
+else if(dialog.type==='atm-denied-notices'){
+ const records=atmReadDeniedNotices(me?.uuid);
+ h='<div class="row"><h3>Avisos no entregados</h3><button type="button" class="btn ghost" data-a="close">×</button></div>'+
+ '<div class="notice">El servidor rechazó estos avisos. No se enviaron ni se eliminaron: están respaldados solo en este dispositivo. Guardá una copia antes de borrar datos del navegador.</div>'+
+ (records===null?'<div class="alert">No se puede leer el respaldo; no se ha sobrescrito.</div>':
+ '<p class="sub">'+records.length+' aviso(s) resguardado(s).</p>'+
+ records.slice(0,30).map(x=>'<div class="card" style="margin:7px 0;padding:10px">'+
+  '<strong>'+esc(x.row?.vehicle_caption||x.row?.category||'Mensaje')+'</strong>'+
+  '<small class="sub">Error '+esc(x.code)+' · '+esc(x.saved_at||'')+'</small>'+
+  '<p style="white-space:pre-wrap;overflow-wrap:anywhere;margin:5px 0">'+esc(x.row?.body||'')+'</p></div>').join('')+
+ (records.length>30?'<p class="sub">Se muestran 30 avisos; el respaldo contiene todos.</p>':'')+
+ '<button type="button" class="btn" data-a="atm-denied-export">Descargar respaldo (.json)</button>')+
+ '<button type="button" class="btn ghost" data-a="close">Cerrar</button>';
 }
 else if(dialog.type==='heldcopies'){
  if(me?.role!=='admin')return '';
@@ -2709,6 +2724,48 @@ function uiForWork(row){const kind=row.kind,known=cloud.workUiIds.get(row.id);co
 const ATM_OUTBOX_PREFIX='atm_manager_pending_';
 function atmOutboxKey(id){return ATM_OUTBOX_PREFIX+id;}
 function atmReadOutbox(id){try{const rows=JSON.parse(localStorage.getItem(atmOutboxKey(id))||'[]');return Array.isArray(rows)?rows:[]}catch(_){return []}}
+/* Contención segura: los rechazos permanentes de un aviso no deben detener
+   calendarios, registros ni los demás mensajes. Cada aviso se respalda ANTES
+   de separarlo de la cola activa. Nunca se considera entregado. */
+const atmDeniedKey=id=>'atm_manager_denied_notices_'+id;
+function atmReadDeniedNotices(id){
+ if(!id)return [];
+ try{
+  const raw=localStorage.getItem(atmDeniedKey(id));
+  if(!raw)return [];
+  const list=JSON.parse(raw);
+  return Array.isArray(list)?list:null;
+ }catch(e){console.error('Respaldo de avisos no legible:',e);return null;}
+}
+function atmIsPermissionDenied(e){
+ return String(e?.code||'')==='42501'||
+  (Number(e?.status)===403&&/permission denied|not authorized|permisos|row.level.security/i.test(String(e?.message||'')));
+}
+function atmPreserveDeniedNotice(row,error,owner){
+ if(!owner||row?.author_id!==owner||!row?.id)throw new Error('No se puede respaldar un aviso sin autor o identificador válido.');
+ const stored=atmReadDeniedNotices(owner);
+ if(!stored)throw new Error('El respaldo de avisos no se puede leer: cola original conservada.');
+ const record={id:row.id,row:{...row},code:String(error?.code||error?.status||'42501'),
+  saved_at:new Date().toISOString()};
+ const next=[...stored.filter(x=>x.id!==row.id),record];
+ try{
+  localStorage.setItem(atmDeniedKey(owner),JSON.stringify(next));
+  const verified=atmReadDeniedNotices(owner);
+  if(!verified||!verified.some(x=>x.id===row.id&&
+      JSON.stringify(x.row)===JSON.stringify(row))||verified.length!==next.length)
+   throw new Error('No se pudo confirmar el respaldo local.');
+ }catch(e){
+  throw new Error('No se pudo proteger el mensaje antes de retirarlo de la cola. Se conservó el original.');
+ }
+ /* Nunca descartar el único ejemplar si falló el respaldo. */
+ atmForgetPending(row.id,owner);
+ if(messages.some(m=>m.uuid===row.id)){
+  messages=messages.filter(m=>m.uuid!==row.id);
+  reportLogs();
+ }
+ console.warn('Aviso no entregado resguardado para revisión:',row.id,record.code);
+ return true;
+}
 function atmRememberPending(){
  if(!me?.uuid)return;
  const map=new Map(atmReadOutbox(me.uuid).filter(x=>x?.id).map(x=>[x.id,x]));
@@ -2771,6 +2828,21 @@ root.addEventListener('click',e=>{
  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);
  notify('Respaldo descargado. Guardalo en un lugar seguro.');
 },true);
+root.addEventListener('click',e=>{
+ const b=e.target.closest('[data-a="atm-denied-open"],[data-a="atm-denied-export"]');
+ if(!b||!me?.uuid)return;
+ e.preventDefault();e.stopImmediatePropagation();
+ if(b.dataset.a==='atm-denied-open'){showDialog({type:'atm-denied-notices'});return;}
+ const records=atmReadDeniedNotices(me.uuid);
+ if(!records?.length){notify('No hay avisos resguardados en este dispositivo.');return;}
+ const payload={format:'atm-manager-avisos-no-entregados-v1',saved_at:new Date().toISOString(),records};
+ const url=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:'application/json;charset=utf-8'}));
+ const link=document.createElement('a');
+ link.href=url;link.download='atm-manager-avisos-no-entregados-'+new Date().toISOString().slice(0,10)+'.json';
+ document.body.appendChild(link);link.click();link.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),5000);
+ notify('Respaldo descargado. Guardalo en un lugar seguro.');
+},true);
 function atmForgetPending(id,author){if(!author||!id)return;try{const keep=atmReadOutbox(author).filter(x=>x.id!==id);if(keep.length)localStorage.setItem(atmOutboxKey(author),JSON.stringify(keep));else localStorage.removeItem(atmOutboxKey(author))}catch(_){}}
 /* Los avisos pendientes de bitácoras copiadas sobreviven si una nueva
    actividad no llegó a sincronizarse. Si ya no existe su trabajo asociado,
@@ -2794,11 +2866,11 @@ function atmPersistPendingRepair(userId,record){
  }catch(e){console.warn('El aviso pendiente reparado sigue en memoria:',e)}
 }
 async function atmDeliverPending(){
- if(!me?.uuid||!cloud.ready)return;
+ if(!me?.uuid||!cloud.ready||cloud.busy)return;
  if(!atmQuarantineAdminCopies())return;
  const id=me.uuid,pending=atmReadOutbox(id);if(!pending.length)return;
  cloud.busy=true;
- let processed=0;
+ let processed=0,protectedCount=0,failed=false;
  try{
   for(const original of pending){
    if(original.author_id!==id)continue;
@@ -2809,26 +2881,39 @@ async function atmDeliverPending(){
    }
    const check=await cloud.sb.from('atm_notices').select('id').eq('id',row.id).maybeSingle();
    if(check.error)throw check.error;
-   if(!check.data){const {error:e}=await cloud.sb.from('atm_notices').insert(row);
+   if(!check.data){
+     const {error:e}=await cloud.sb.from('atm_notices').insert(row);
      if(e?.code==='23514'&&String(e.message||'').includes('historial ya limpiado')){
-       atmForgetPending(row.id,id);continue;
+       // Conservar historial antiguo en la cola: nunca eliminar mensajes silenciosamente.
+       if(atmPreserveDeniedNotice(row,e,id))protectedCount++;
+       continue;
+     }
+     if(e&&atmIsPermissionDenied(e)){
+       if(atmPreserveDeniedNotice(row,e,id))protectedCount++;
+       continue;
      }
      if(e)throw e;
    }
    atmForgetPending(row.id,id);processed++;
    cloud.lastNotice.add(row.id);updateSendCheck(row.id);
-    if(row.category!=='Registrar bitácora')await atmPushDispatch('notice',row.id);
+   if(!['Registrar bitácora','Informar avance'].includes(row.category)&&
+      !String(row.body||'').startsWith(ATM_FOCUS_PREFIX))
+    await atmPushDispatch('notice',row.id);
   }
  }catch(e){
+  failed=true;
   console.warn('Error real al recuperar avisos pendientes',e);
   const code=String(e?.code||e?.status||'sin código').slice(0,30);
-  const cause=code==='42501'||Number(e?.status)===403?'Permisos del servidor':
-   code==='23503'?'Referencia del mensaje no válida':code==='23514'?'Validación del mensaje':'Sincronización fallida';
-  busyStatus('Avisos pendientes · '+cause+' · Error '+code+' · Tocá para reintentar');
+  busyStatus('Avisos pendientes · Error '+code+' · Tocá para reintentar');
   cloud.retryPaused=true;
+ }finally{cloud.busy=false;}
+ if(protectedCount){
+  notify(protectedCount+' aviso(s) no entregado(s) resguardado(s). Revisá Opciones del taller.');
+  if(!failed)busyStatus('');
  }
- finally{cloud.busy=false;}
- if(processed)await cloudLoad();
+ /* Recargar solo si no hay cambios de trabajo o mensajes locales por guardar. */
+ if((processed||protectedCount)&&!cloud.retryPaused&&!atmReadOutbox(id).length&&
+    draftSignature()===cloud.revision)await cloudLoad();
 }
 function atmRequireLogin(){
  if(cloud.expiring||!me)return;
@@ -2932,9 +3017,11 @@ async function cloudWrite(){
    if(!row.author_id||!row.target_employee_id)throw new Error('Destinatario no identificado.');
    const {error:e}=await cloud.sb.from('atm_notices').insert(row);
    if(e){
-    if(e.code==='23514'&&String(e.message||'').includes('historial ya limpiado')){
-      atmForgetPending(m.uuid,expectedId);
-      messages=messages.filter(x=>x!==m);
+    if((e.code==='23514'&&String(e.message||'').includes('historial ya limpiado'))||
+        atmIsPermissionDenied(e)){
+      // El aviso NO se envió; preservar copia exacta antes de continuar.
+      atmPreserveDeniedNotice(row,e,expectedId);
+      notify('Aviso no entregado resguardado. Los demás cambios continúan.');
       continue;
     }
     if(e.code==='23505'){
