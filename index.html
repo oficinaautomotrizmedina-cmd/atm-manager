@@ -478,8 +478,8 @@ function atmMarkActiveWork(dayKey,workId){
 }
 
 
-/* El cambio de actividad ofrece seguimiento en el vehículo anterior o el nuevo.
-   Los seguimientos conservan el mismo formato de avisos que ya utiliza el sistema. */
+/* El cambio de actividad sugiere el vehículo anterior y permite elegir cualquier
+   tarea del empleado; los seguimientos conservan su mismo formato de avisos. */
 function atmFocusItemForEmployee(date,focus){
  if(!me||me.role==='admin'||!focus)return null;
  return displaySchedule(me.id,date).find(item=>atmFocusWorkId(item)===focus)||null;
@@ -1141,21 +1141,32 @@ else if(dialog.type==='atm-followup-choice'){
  const date=dialog.day,items=me?.role==='admin'||date!==atmActualToday()?[]:displaySchedule(me.id,date);
  const old=items.find(x=>atmFocusWorkId(x)===dialog.previousId),
        selected=items.find(x=>atmFocusWorkId(x)===dialog.currentId);
- const option=(item,title)=>{
+ const option=(item,subtitle='')=>{
   if(!item)return '';
   const id=atmFocusWorkId(item),num=items.indexOf(item)+1;
   return '<button type="button" class="opt" data-a="atm-followup-pick" data-focus="'+esc(id)+'"><span class="ico">'+num+'</span>'+
-   '<span class="grow"><strong>'+esc(title)+'</strong></span>›</button>';
+   '<span class="grow"><strong>'+esc(atmFocusVehicleName(item))+'</strong>'+
+   (subtitle?'<small>'+esc(subtitle)+'</small>':'')+'</span>›</button>';
  };
- h='<div class="row"><h3>'+esc(old?atmFocusVehicleName(old):'Registrar seguimiento')+'</h3><button class="btn ghost" data-a="close">×</button></div>'+
-  '<p class="sub">¿Para cuál vehículo querés guardar el seguimiento?</p>'+
-  option(old,atmFocusVehicleName(old))+option(selected,'Vehículo actual')+
-  '<button type="button" class="btn ghost" data-a="atm-followup-skip" style="width:100%">No registrar seguimiento</button>';
+ const skip='<button type="button" class="btn ghost" data-a="atm-followup-skip" style="width:100%">No registrar seguimiento</button>';
+ if(dialog.showAll){
+  h='<div class="row"><h3>Seleccionar vehículo</h3></div>'+
+   '<p class="sub">Elegí la tarea en la que querés registrar el seguimiento.</p>'+
+   (items.length?items.map(item=>option(item,item===old?'Vehículo anterior':item===selected?'Vehículo actual':'')).join(''):
+   '<div class="notice">No hay tareas disponibles para este día.</div>')+
+   '<button type="button" class="btn ghost" data-a="atm-followup-back" style="width:100%">Volver</button>'+skip;
+ }else{
+  h='<div class="row"><h3>Registrar seguimiento</h3></div>'+
+   '<p class="sub">¿Para cuál vehículo querés guardar el seguimiento?</p>'+
+   option(old,'Vehículo anterior · opción predeterminada')+
+   '<button type="button" class="opt" data-a="atm-followup-list"><span class="ico">☷</span>'+
+   '<span class="grow"><strong>Seleccionar vehículo</strong><small>Ver todas las tareas asignadas</small></span>›</button>'+skip;
+ }
 }
 else if(dialog.type==='atm-followup-editor'){
  sheet=true;
  const item=me?.role==='admin'||dialog.day!==atmActualToday()?null:atmFocusItemForEmployee(dialog.day,dialog.focus);
- h=item?'<div class="row"><h3>Registrar seguimiento</h3><button class="btn ghost" data-a="close">×</button></div>'+
+ h=item?'<div class="row"><h3>Registrar seguimiento</h3></div>'+
   '<div class="notice"><strong>🚘 '+esc(atmFocusVehicleName(item))+'</strong><div class="sub">'+esc(fmt(dialog.day))+'</div></div>'+
   '<form id="atm-followup-form" class="stack"><label class="field">Seguimiento del vehículo'+
    '<textarea name="entry" rows="6" minlength="1" maxlength="8000" required placeholder="Escribí el avance o estado actual del vehículo…"></textarea></label>'+
@@ -2018,10 +2029,16 @@ if(a==='close'){if(dialog?.type==='logeditor'){ctx=null;draft='';closeDialog();r
 if(a==='newjob'){showDialog({type:'newjob'});return}if(a==='editjob'){if(me?.role==='admin'&&jobs.some(x=>x.id===Number(b.dataset.job)))showDialog({type:'editjob',id:Number(b.dataset.job)});return}if(a==='prev'||a==='next'){day=dayAdd(day,a==='prev'?-7:7);week=day;render();return}if(a==='date'){day=b.dataset.day;week=day;render();return}if(a==='employee'){employee=Number(b.dataset.id);render();return}if(a==='pending'){employee='pending';filter='all';render();return}if(a==='backemployee'){employee=null;render();return}if(a==='openchat'){thread=Number(b.dataset.id);ctx=null;draft='';adminAllowReply=false;render();return}if(a==='gotonotices'){tab='chat';thread=null;ctx=null;draft='';render();return}if(a==='replyinstruction'){const m=messages.find(x=>x.id===Number(b.dataset.id));if(canReplyTo(m)){ctx={category:'Respuesta a instrucción',replyTo:m.id,vehicle:m.vehicle||null,taskType:m.taskType||null,taskId:m.taskId||null};draft='';render();setTimeout(()=>main.querySelector('#draft')?.focus(),0)}return}if(a==='notebooking'||a==='notejob'){if(me?.role!=='admin')return;showDialog({type:'adminnote',taskType:a==='notebooking'?'booking':'job',taskId:Number(b.dataset.id)});return}if(a==='backchat'){thread=null;render();return}if(a==='atm-followup-skip'&&dialog?.type==='atm-followup-choice'&&me?.role!=='admin'){
  closeDialog();return;
 }
+if(a==='atm-followup-list'&&dialog?.type==='atm-followup-choice'&&me?.role!=='admin'){
+ showDialog({...dialog,showAll:true});return;
+}
+if(a==='atm-followup-back'&&dialog?.type==='atm-followup-choice'&&me?.role!=='admin'){
+ showDialog({...dialog,showAll:false});return;
+}
 if(a==='atm-followup-pick'&&dialog?.type==='atm-followup-choice'&&me?.role!=='admin'){
  const pick=b.dataset.focus;
- if(pick===dialog.previousId||pick===dialog.currentId)
-  atmShowFollowupEditor(dialog.day,pick);
+ if(atmFocusItemForEmployee(dialog.day,pick))atmShowFollowupEditor(dialog.day,pick);
+ else notify('Este vehículo ya no está disponible para registrar el seguimiento.');
  return;
 }
 if(a==='atm-back-records'&&me?.role!=='admin'){tab='records';closeDialog();render();return}
