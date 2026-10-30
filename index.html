@@ -2777,7 +2777,12 @@ function atmForgetPending(id,author){if(!author||!id)return;try{const keep=atmRe
    conservar la bitácora como independiente, sin relacionarla erróneamente
    con otro vehículo que tenga el mismo nombre. */
 function atmRepairPendingLog(row){
- if(!row||row.category!=='Registrar bitácora'||!row.work_item_id)return row;
+ if(!row)return row;
+ /* La política del servidor exige work_item_id NULL en respuestas a Administración.
+    Reparar en memoria y en la cola local los intentos anteriores, sin duplicar mensajes. */
+ if(row.category==='Respuesta a administración'&&row.reply_to&&row.work_item_id!=null)
+  return {...row,work_item_id:null};
+ if(row.category!=='Registrar bitácora'||!row.work_item_id)return row;
  if(cloud.lastWork.has(row.work_item_id))return row;
  return {...row,work_item_id:null};
 }
@@ -2800,7 +2805,7 @@ async function atmDeliverPending(){
    const row=atmRepairPendingLog(original);
    if(row!==original){
     atmPersistPendingRepair(id,row);
-    console.warn('Bitácora guardada como independiente porque el trabajo copiado no existe',row.id);
+    console.info('Aviso pendiente reparado para cumplir la vinculación permitida',row.id);
    }
    const check=await cloud.sb.from('atm_notices').select('id').eq('id',row.id).maybeSingle();
    if(check.error)throw check.error;
@@ -2854,7 +2859,15 @@ const rowForMessage = m => {
  const parent=messages.find(x=>x.id===m.replyTo);
  const allowed=['Informar avance','Reportar problema','Consultas y solicitudes','Registrar bitácora','Asuntos administrativos','Indicación del administrador','Aviso general','Respuesta a administración'];
  const cat=m.category==='Respuesta a instrucción'?'Respuesta a administración':m.category||'Aviso general';
- return {id:m.uuid,author_id:uuidFor(m.sender),target_employee_id:uuidFor(m.employeeId),work_item_id:ownTask?.uuid||null,category:allowed.includes(cat)?cat:'Aviso general',body:m.text,allow_reply:!!m.allowReply,reply_to:parent?.uuid||null,vehicle_caption:m.vehicle||ownTask?.vehicle||ownTask?.title||null,work_day:m.workDay||ownTask?.day||null,priority_caption:ownTask?.priority||null,task_snapshot:ownTask?.instructions||ownTask?.detail||null,created_at:new Date(m.ts).toISOString()};
+ /* Las respuestas conservan la referencia al mensaje original y el nombre del
+    vehículo, pero NO un work_item_id: así lo exige la política segura de INSERT. */
+ const reply=cat==='Respuesta a administración';
+ return {id:m.uuid,author_id:uuidFor(m.sender),target_employee_id:uuidFor(m.employeeId),
+  work_item_id:reply?null:ownTask?.uuid||null,category:allowed.includes(cat)?cat:'Aviso general',
+  body:m.text,allow_reply:!!m.allowReply,reply_to:parent?.uuid||null,
+  vehicle_caption:m.vehicle||ownTask?.vehicle||ownTask?.title||null,
+  work_day:m.workDay||ownTask?.day||null,priority_caption:ownTask?.priority||null,
+  task_snapshot:ownTask?.instructions||ownTask?.detail||null,created_at:new Date(m.ts).toISOString()};
 };
 function noticeToUI(row,workByUuid){let owner=uiFor(row.target_employee_id),send=uiFor(row.author_id);
  const w=workByUuid.get(row.work_item_id),localCat=row.category==='Respuesta a administración'?'Respuesta a instrucción':row.category;
