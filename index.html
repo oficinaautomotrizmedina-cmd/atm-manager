@@ -1505,6 +1505,46 @@ function ghostMove(x,y){if(!drag)return;const r=root.getBoundingClientRect();dra
 function arrowHold(v){if(!drag)return;if(drag.hover===v)return;clearTimeout(drag.timer);drag.hover=v;if(!v)return;const d=drag;function advance(){if(drag!==d||d.hover!==v)return;week=dayAdd(week,v*7);drawMain(true);d.timer=setTimeout(advance,1200)}d.timer=setTimeout(advance,650)}
 function clearDrag(){if(pending){clearTimeout(pending.timer);pending=null}if(!drag)return;clearTimeout(drag.timer);drag.ghost.remove();drag=null;bin.style.display='none';bin.classList.remove('hit')}
 root.addEventListener('click',e=>{if(e.target.closest('.atm-task-drag-handle')){e.preventDefault();e.stopImmediatePropagation();}},true);
+/* Mantener presionado un vehículo del calendario para declarar la tarea actual.
+   No interfiere con el arrastre del administrador ni con el desplazamiento vertical. */
+let atmFocusHold=null,atmFocusSuppressClickUntil=0;
+function atmCancelFocusHold(){
+ if(atmFocusHold?.timer)clearTimeout(atmFocusHold.timer);
+ atmFocusHold=null;
+}
+root.addEventListener('pointerdown',e=>{
+ if(!me||me.role==='admin'||tab!=='calendar'||dialog||e.button!==0)return;
+ const card=e.target.closest('[data-atm-focus]');
+ if(!card)return;
+ atmCancelFocusHold();
+ const hold={pid:e.pointerId,x:e.clientX,y:e.clientY,el:card,
+   focus:card.dataset.atmFocus,day:card.dataset.atmFocusDay,timer:null};
+ hold.timer=setTimeout(()=>{
+  if(atmFocusHold!==hold||!hold.el.isConnected)return;
+  atmFocusHold=null;atmFocusSuppressClickUntil=Date.now()+700;
+  if(hold.day!==atmActualToday()){
+   notify('Podés marcar solamente el vehículo del día actual.');return;
+  }
+  if(!cloud.ready||cloud.busy||cloud.loading||cloud.retryPaused){
+   notify('Esperá a que se sincronicen las tareas.');return;
+  }
+  if(atmMarkActiveWork(hold.day,hold.focus))notify('Vehículo actual seleccionado');
+ },580);
+ atmFocusHold=hold;
+},{passive:true});
+window.addEventListener('pointermove',e=>{
+ const h=atmFocusHold;if(h&&h.pid===e.pointerId&&Math.hypot(e.clientX-h.x,e.clientY-h.y)>12)atmCancelFocusHold();
+},{passive:true});
+window.addEventListener('pointerup',e=>{if(atmFocusHold?.pid===e.pointerId)atmCancelFocusHold();},{passive:true});
+window.addEventListener('pointercancel',e=>{if(atmFocusHold?.pid===e.pointerId)atmCancelFocusHold();},{passive:true});
+root.addEventListener('contextmenu',e=>{
+ if(me?.role!=='admin'&&e.target.closest('[data-atm-focus]'))e.preventDefault();
+},true);
+root.addEventListener('click',e=>{
+ if(Date.now()<atmFocusSuppressClickUntil&&e.target.closest('[data-atm-focus]')){
+  e.preventDefault();e.stopImmediatePropagation();
+ }
+},true);
 root.addEventListener('pointerdown',e=>{if(!me||me.role!=='admin'||dialog||e.button!==0)return;let o=null;if(tab==='calendar'||(tab==='tasks'&&employee)){const el=e.target.closest('.day[data-day]'),scope=tab==='tasks'?employee:filter;if(el&&(tab==='calendar'?displayDayTotal(el.dataset.day,scope):totalDay(el.dataset.day,scope)))o={kind:'day',el,day:el.dataset.day,scope,origin:tab}}
 if(!o&&(tab==='calendar'||(tab==='tasks'&&employee!=='pending'&&employee))){const el=e.target.closest('.task[data-work]');if(el&&(e.pointerType!=='touch'||e.target.closest('.atm-task-drag-handle'))){const k=el.dataset.work,record=k[0]==='b'?appointments.find(x=>x.id===Number(k.slice(1))):jobs.find(x=>x.id===Number(k.slice(1)));if(record)o={kind:'job',el,key:k,title:record.vehicle||record.title,emp:record.userId,day:record.day}}}if(!o)return;o.pid=e.pointerId;o.x=e.clientX;o.y=e.clientY;o.timer=setTimeout(()=>longBegin(o),330);pending=o},{passive:true});
 window.addEventListener('pointermove',e=>{if(pending&&pending.pid===e.pointerId){if(Math.hypot(e.clientX-pending.x,e.clientY-pending.y)>12){clearTimeout(pending.timer);pending=null}return}if(!drag||drag.pid!==e.pointerId)return;if(e.cancelable)e.preventDefault();ghostMove(e.clientX,e.clientY);main.querySelectorAll('.day.hit,.task.hit,.arw.hit').forEach(x=>x.classList.remove('hit'));bin.classList.remove('hit');if(inRect(bin,e.clientX,e.clientY,9)){arrowHold(0);bin.classList.add('hit');return}
