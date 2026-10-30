@@ -538,7 +538,9 @@ function taskLogsHTML(item){
     (category==='Registrar bitácora'&&l.uuid&&cloud.lastNotice.has(l.uuid)?'<button type="button" class="atm-work-log-delete" data-a="atm-inline-log-delete" data-uuid="'+esc(l.uuid)+'" title="Eliminar esta bitácora" aria-label="Eliminar esta bitácora">×</button>':'')+
     '</div>').join('')+'</div>';
  };
- return reference+section('Registrar bitácora','📖 Bitácora del día')+section('Informar avance','📝 Seguimiento del día');
+ /* Las referencias del día anterior permanecen plegadas; los registros reales
+    del día están visibles: primero seguimiento y al final bitácora. */
+ return reference+section('Informar avance','📝 Seguimiento del día')+section('Registrar bitácora','📖 Bitácora del día');
 }
 function workWithLogsHTML(item,i,editable,draggable){
  const record=item.record,focus=atmFocusWorkId(item);
