@@ -369,6 +369,14 @@ const PRIORITIES={red:{name:'Garantía / Alta prioridad',short:'Garantía / Alta
 /* Vehículos identificados por una bitácora sin agendamiento.
    Las tareas ya existentes prevalecen; nunca suplantar ni duplicar agenda. */
 const atmVehicleKey=x=>String(x||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('es-SV');
+/* La fecha del calendario y el día real de El Salvador pueden diferir.
+   TODAY se fijaba al iniciar la app y causaba omisiones en el selector. */
+const atmActualToday=()=>new Intl.DateTimeFormat('sv-SE',{
+ timeZone:'America/El_Salvador',year:'numeric',month:'2-digit',day:'2-digit'
+}).format(new Date());
+const atmReportDates=()=>[...new Set([day,atmActualToday()])].filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d));
+const atmReportMatchingWork=(owner,vehicle)=>atmReportDates()
+ .map(date=>atmMatchingScheduledWork(date,owner,vehicle)).find(Boolean)||null;
 function atmMatchingScheduledWork(date,owner,vehicle){
  const key=atmVehicleKey(vehicle);
  if(!key||owner==null)return null;
@@ -982,11 +990,11 @@ else if(dialog.type==='newjob'||dialog.type==='editjob'){
 }
 else if(dialog.type==='categories'){sheet=true;h='<div class="row"><h3>¿Qué querés comunicar?</h3><button class="btn ghost" data-a="close">×</button></div>'+opts.map(o=>'<button class="opt" data-a="category" data-cat="'+esc(o[0])+'"><span class="ico">'+o[2]+'</span><span class="grow"><strong>'+esc(o[0])+'</strong><small>'+esc(o[1])+'</small></span>›</button>').join('')}
 else if(dialog.type==='vehicles'){
- sheet=true;const j=list(me.id,TODAY),b=bookedFor(me.id,TODAY),allowNew=['Registrar bitácora','Informar avance'].includes(dialog.category),standalone=allowNew?standaloneLogs(me.id,TODAY):[];
+ sheet=true;const dates=atmReportDates(),j=dates.flatMap(d=>list(me.id,d)),b=dates.flatMap(d=>bookedFor(me.id,d)),allowNew=['Registrar bitácora','Informar avance'].includes(dialog.category),standalone=allowNew?dates.flatMap(d=>standaloneLogs(me.id,d)):[];
  h='<div class="row"><h3>'+esc(dialog.category)+'</h3><button class="btn ghost" data-a="close">×</button></div><p class="sub">'+(allowNew?'Elegí un vehículo asignado o agregá uno nuevo para '+(dialog.category==='Informar avance'?'registrar su seguimiento.':'registrar su bitácora.'):'Elegí el vehículo que tenés asignado para hoy.')+'</p>'+
- (b.length?'<div class="section-title">VEHÍCULOS AGENDADOS</div>'+b.map(x=>'<button class="opt" data-a="selectbooking" data-booking="'+x.id+'"><span class="ico">🚘</span><span class="grow"><strong>'+esc(x.vehicle)+'</strong><small>'+esc(x.instructions)+'</small><span class="priority-label priority-'+esc(x.priority)+'" style="margin-top:6px">'+esc(PRIORITIES[x.priority].name)+'</span></span>›</button>').join(''):'')+
- (j.length?'<div class="section-title">TAREAS CON VEHÍCULO</div>'+j.map(x=>'<button class="opt" data-a="selectcar" data-job="'+x.id+'"><span class="ico">🚗</span><span class="grow"><strong>'+esc(x.title)+'</strong><small>'+esc(x.detail)+'</small></span>›</button>').join(''):'')+
- (standalone.length?'<div class="section-title">VEHÍCULOS REGISTRADOS</div>'+standalone.map(x=>'<button class="opt" data-a="select-standalone" data-vehicle="'+esc(x.record.vehicle)+'"><span class="ico">📖</span><span class="grow"><strong>'+esc(x.record.vehicle)+'</strong></span>›</button>').join(''):'')+
+ (b.length?'<div class="section-title">VEHÍCULOS AGENDADOS</div>'+b.map(x=>'<button class="opt" data-a="selectbooking" data-booking="'+x.id+'"><span class="ico">🚘</span><span class="grow"><strong>'+esc(x.vehicle)+'</strong><small>'+esc(x.instructions)+(dates.length>1?' · '+esc(fmt(x.day)):'')+'</small><span class="priority-label priority-'+esc(x.priority)+'" style="margin-top:6px">'+esc((PRIORITIES[x.priority]||PRIORITIES.yellow).name)+'</span></span>›</button>').join(''):'')+
+ (j.length?'<div class="section-title">TAREAS CON VEHÍCULO</div>'+j.map(x=>'<button class="opt" data-a="selectcar" data-job="'+x.id+'"><span class="ico">🚗</span><span class="grow"><strong>'+esc(x.title)+'</strong><small>'+esc(x.detail)+(dates.length>1?' · '+esc(fmt(x.day)):'')+'</small></span>›</button>').join(''):'')+
+ (standalone.length?'<div class="section-title">VEHÍCULOS REGISTRADOS</div>'+standalone.map(x=>'<button class="opt" data-a="select-standalone" data-vehicle="'+esc(x.record.vehicle)+'" data-day="'+esc(x.record.day)+'"><span class="ico">📖</span><span class="grow"><strong>'+esc(x.record.vehicle)+'</strong>'+(dates.length>1?'<small>'+esc(fmt(x.record.day))+'</small>':'')+'</span>›</button>').join(''):'')+
  (allowNew?'<button type="button" class="opt atm-log-new-vehicle" data-a="new-log-vehicle"><span class="ico">＋</span><span class="grow"><strong>Agregar vehículo</strong><small>Marca, modelo y año · '+(dialog.category==='Informar avance'?'registrar seguimiento':'registrar bitácora')+'</small></span>›</button>':'')+
  (!j.length&&!b.length&&!allowNew?'<div class="notice">No tenés vehículos asignados para hoy. El administrador puede agendarlos desde Calendario.</div>':'')+
  '<button class="btn ghost" data-a="backcategories">Volver</button>';
@@ -1806,10 +1814,12 @@ if(a==='close'){if(dialog?.type==='logeditor'){ctx=null;draft='';closeDialog();r
 if(a==='newjob'){showDialog({type:'newjob'});return}if(a==='editjob'){if(me?.role==='admin'&&jobs.some(x=>x.id===Number(b.dataset.job)))showDialog({type:'editjob',id:Number(b.dataset.job)});return}if(a==='prev'||a==='next'){day=dayAdd(day,a==='prev'?-7:7);week=day;render();return}if(a==='date'){day=b.dataset.day;week=day;render();return}if(a==='employee'){employee=Number(b.dataset.id);render();return}if(a==='pending'){employee='pending';filter='all';render();return}if(a==='backemployee'){employee=null;render();return}if(a==='openchat'){thread=Number(b.dataset.id);ctx=null;draft='';adminAllowReply=false;render();return}if(a==='gotonotices'){tab='chat';thread=null;ctx=null;draft='';render();return}if(a==='replyinstruction'){const m=messages.find(x=>x.id===Number(b.dataset.id));if(canReplyTo(m)){ctx={category:'Respuesta a instrucción',replyTo:m.id,vehicle:m.vehicle||null,taskType:m.taskType||null,taskId:m.taskId||null};draft='';render();setTimeout(()=>main.querySelector('#draft')?.focus(),0)}return}if(a==='notebooking'||a==='notejob'){if(me?.role!=='admin')return;showDialog({type:'adminnote',taskType:a==='notebooking'?'booking':'job',taskId:Number(b.dataset.id)});return}if(a==='backchat'){thread=null;render();return}if(a==='plus'){showDialog({type:'categories'});return}if(a==='category'){category(b.dataset.cat);return}if(a==='backcategories'){showDialog({type:'categories'});return}if(a==='new-log-vehicle'&&me?.role!=='admin'&&['Registrar bitácora','Informar avance'].includes(dialog?.category)){showDialog({type:'newlogvehicle',category:dialog.category});return}
 if(a==='back-log-vehicles'&&me?.role!=='admin'&&dialog?.type==='newlogvehicle'){showDialog({type:'vehicles',category:dialog.category});return}
 if(a==='select-standalone'&&me?.role!=='admin'&&['Registrar bitácora','Informar avance'].includes(dialog?.category)){
- const vehicle=b.dataset.vehicle,record=standaloneLogs(me.id,TODAY).find(x=>x.record.vehicle===vehicle);
+ const vehicle=b.dataset.vehicle,chosenDay=b.dataset.day,record=atmReportDates()
+  .flatMap(d=>standaloneLogs(me.id,d))
+  .find(x=>x.record.vehicle===vehicle&&x.record.day===chosenDay);
  if(record){
   const category=dialog.category;
-  ctx={category,vehicle,jobId:'s'+atmVehicleKey(vehicle),taskType:'standalone',taskId:null,taskDetail:'',workDay:TODAY,priority:null,standalone:true};
+  ctx={category,vehicle,jobId:'s'+atmVehicleKey(vehicle),taskType:'standalone',taskId:null,taskDetail:'',workDay:record.record.day,priority:null,standalone:true};
   draft=category==='Registrar bitácora'?drafts[me.id+':'+ctx.jobId]||'':'';
   if(category==='Registrar bitácora')showDialog({type:'logeditor'});
   else{closeDialog();render();setTimeout(()=>main.querySelector('#draft')?.focus(),0)}
@@ -1849,7 +1859,7 @@ if(f.id==='atm-log-editor'&&me?.role!=='admin'&&dialog?.type==='logeditor'&&ctx?
   const category=dialog.category;
   if(!vehicle||vehicle.length>130||!['Registrar bitácora','Informar avance'].includes(category))return;
   // Reutilizar la asignación si ya existe: nunca crear otro registro independiente.
-  const assigned=atmMatchingScheduledWork(TODAY,me.id,vehicle);
+  const assigned=atmReportMatchingWork(me.id,vehicle);
   if(assigned){
    const record=assigned.record;
    ctx={category,vehicle:assigned.kind==='job'?record.title:record.vehicle,
@@ -1858,7 +1868,7 @@ if(f.id==='atm-log-editor'&&me?.role!=='admin'&&dialog?.type==='logeditor'&&ctx?
     priority:assigned.kind==='booking'?record.priority:null};
   }else{
    ctx={category,vehicle,jobId:'s'+atmVehicleKey(vehicle),taskType:'standalone',
-    taskId:null,taskDetail:'',workDay:TODAY,priority:null,standalone:true};
+    taskId:null,taskDetail:'',workDay:atmActualToday(),priority:null,standalone:true};
   }
   draft=category==='Registrar bitácora'?drafts[me.id+':'+ctx.jobId]||'':'';
   if(category==='Registrar bitácora')showDialog({type:'logeditor'});
