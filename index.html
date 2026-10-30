@@ -2353,7 +2353,8 @@ async function cloudWrite(){
     }else throw e;
    }
    cloud.lastNotice.add(m.uuid);atmForgetPending(m.uuid,expectedId);updateSendCheck(m.uuid);
-   if(m.category!=='Registrar bitácora')await atmPushDispatch('notice',m.uuid);
+   /* Bitácoras y seguimientos son registros técnicos, no mensajes de chat. */
+   if(!['Registrar bitácora','Informar avance'].includes(m.category))await atmPushDispatch('notice',m.uuid);
   }
   if(me.role==='admin')for(const old of [...cloud.lastWork.keys()]){
    if(seenIds.has(old))continue;
