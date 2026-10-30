@@ -477,6 +477,54 @@ function atmMarkActiveWork(dayKey,workId){
  return true;
 }
 
+
+/* El cambio de actividad ofrece seguimiento en el vehículo anterior o el nuevo.
+   Los seguimientos conservan el mismo formato de avisos que ya utiliza el sistema. */
+function atmFocusItemForEmployee(date,focus){
+ if(!me||me.role==='admin'||!focus)return null;
+ return displaySchedule(me.id,date).find(item=>atmFocusWorkId(item)===focus)||null;
+}
+function atmFocusVehicleName(item){
+ return item?(item.kind==='job'?item.record.title:item.record.vehicle)||'Vehículo':'Vehículo';
+}
+function atmShowFollowupEditor(date,focus){
+ if(!me||me.role==='admin'||date!==atmActualToday())return false;
+ if(!atmFocusItemForEmployee(date,focus))return false;
+ showDialog({type:'atm-followup-editor',day:date,focus});
+ return true;
+}
+function atmFocusLongPressed(date,focus){
+ if(me?.role==='admin'||date!==atmActualToday())return false;
+ const next=atmFocusItemForEmployee(date,focus);
+ if(!next)return false;
+ const previousId=atmActiveWorkId(me.id,date);
+ const previous=atmFocusItemForEmployee(date,previousId);
+ if(previousId===focus||!previous){
+  return atmShowFollowupEditor(date,focus);
+ }
+ if(!atmMarkActiveWork(date,focus))return false;
+ showDialog({type:'atm-followup-choice',day:date,previousId,currentId:focus});
+ return true;
+}
+function atmSaveChosenFollowup(date,focus,body){
+ if(me?.role==='admin'||!me?.uuid||date!==atmActualToday())return false;
+ const item=atmFocusItemForEmployee(date,focus),text=String(body||'').trim();
+ if(!item||!text||text.length>8000)return false;
+ const record=item.record,kind=item.kind,vehicle=atmFocusVehicleName(item),
+  taskId=kind==='standalone'?null:record.id,
+  details=kind==='job'?record.detail:record.instructions||'',
+  priority=kind==='booking'?record.priority||null:null,now=Date.now();
+ const entry={uuid:crypto.randomUUID(),id:nextMsg++,employeeId:me.id,sender:me.id,
+  category:'Informar avance',vehicle,text,ts:now,allowReply:false,replyTo:null,
+  taskType:kind,taskId,workDay:date,taskDetail:details,priority};
+ messages.push(entry);
+ logs.push({uuid:entry.uuid,id:nextLog++,employeeId:me.id,workDay:date,
+  taskType:kind,taskId,vehicle,taskDetail:details,priority,
+  category:'Informar avance',text,ts:now});
+ closeDialog();render();notify('Seguimiento registrado');
+ return true;
+}
+
 const displayDayTotal=(d,scope)=>totalDay(d,scope)+(
  scope==='pending'||scope==='none'?0:scope==='all'?
  staff().reduce((n,u)=>n+standaloneLogs(u.id,d).length,0):standaloneLogs(scope,d).length
@@ -697,7 +745,6 @@ function atmRecordsHTML(){
  return '<div class="page">'+heading('Registros','ACTIVIDAD TÉCNICA')+
   '<div class="section-title">NUEVO REGISTRO</div>'+
   choice('atm-record-new-bitacora','📖','Registrar bitácora','Trabajos realizados en el vehículo')+
-  choice('atm-record-new-followup','📝','Registrar seguimiento','Avances y estado del trabajo')+
   '<div class="section-title" style="margin-top:18px">CONSULTAR REGISTROS</div>'+
   choice('atm-record-view-bitacoras','📚','Ver bitácoras','Historial ordenado por fecha')+
   choice('atm-record-view-followups','🗂','Ver seguimientos','Historial ordenado por fecha')+
@@ -1089,6 +1136,34 @@ else if(dialog.type==='vehicles'){
  '<button class="btn ghost" data-a="backcategories">Volver</button>';
 }
 
+else if(dialog.type==='atm-followup-choice'){
+ sheet=true;
+ const date=dialog.day,items=me?.role==='admin'||date!==atmActualToday()?[]:displaySchedule(me.id,date);
+ const old=items.find(x=>atmFocusWorkId(x)===dialog.previousId),
+       selected=items.find(x=>atmFocusWorkId(x)===dialog.currentId);
+ const option=(item,label)=>{
+  if(!item)return '';
+  const id=atmFocusWorkId(item),num=items.indexOf(item)+1;
+  return '<button type="button" class="opt" data-a="atm-followup-pick" data-focus="'+esc(id)+'"><span class="ico">'+num+'</span>'+
+   '<span class="grow"><strong>'+esc(atmFocusVehicleName(item))+'</strong><small>'+label+'</small></span>›</button>';
+ };
+ h='<div class="row"><h3>Registrar seguimiento</h3><button class="btn ghost" data-a="close">×</button></div>'+
+  '<p class="sub">¿Para cuál vehículo querés guardar el seguimiento?</p>'+
+  option(old,'Vehículo anterior')+option(selected,'Vehículo actual · seleccionado en azul')+
+  '<button type="button" class="btn ghost" data-a="atm-followup-skip" style="width:100%">No registrar seguimiento</button>';
+}
+else if(dialog.type==='atm-followup-editor'){
+ sheet=true;
+ const item=me?.role==='admin'||dialog.day!==atmActualToday()?null:atmFocusItemForEmployee(dialog.day,dialog.focus);
+ h=item?'<div class="row"><h3>Registrar seguimiento</h3><button class="btn ghost" data-a="close">×</button></div>'+
+  '<div class="notice"><strong>🚘 '+esc(atmFocusVehicleName(item))+'</strong><div class="sub">'+esc(fmt(dialog.day))+'</div></div>'+
+  '<form id="atm-followup-form" class="stack"><label class="field">Seguimiento del vehículo'+
+   '<textarea name="entry" rows="6" minlength="1" maxlength="8000" required placeholder="Escribí el avance o estado actual del vehículo…"></textarea></label>'+
+   '<div class="row"><button type="button" class="btn ghost" data-a="close">Cancelar</button>'+
+   '<button type="submit" class="btn">Guardar seguimiento</button></div></form>':
+  '<div class="notice">El vehículo ya no está disponible para este día.</div>'+
+  '<button type="button" class="btn ghost" data-a="close">Cerrar</button>';
+}
 else if(dialog.type==='logeditor'){
  sheet=true;
  h='<div class="row"><h3>Registrar bitácora</h3><button class="btn ghost" data-a="atm-log-editor-cancel" aria-label="Cerrar">×</button></div>'+
@@ -1531,7 +1606,7 @@ root.addEventListener('pointerdown',e=>{
   if(!cloud.ready||cloud.busy||cloud.loading||cloud.retryPaused){
    notify('Esperá a que se sincronicen las tareas.');return;
   }
-  atmMarkActiveWork(hold.day,hold.focus);
+  atmFocusLongPressed(hold.day,hold.focus);
  },580);
  atmFocusHold=hold;
 },{passive:true});
@@ -1940,10 +2015,18 @@ if(a==='close'){if(dialog?.type==='logeditor'){ctx=null;draft='';closeDialog();r
  }
  return;
 }
-if(a==='newjob'){showDialog({type:'newjob'});return}if(a==='editjob'){if(me?.role==='admin'&&jobs.some(x=>x.id===Number(b.dataset.job)))showDialog({type:'editjob',id:Number(b.dataset.job)});return}if(a==='prev'||a==='next'){day=dayAdd(day,a==='prev'?-7:7);week=day;render();return}if(a==='date'){day=b.dataset.day;week=day;render();return}if(a==='employee'){employee=Number(b.dataset.id);render();return}if(a==='pending'){employee='pending';filter='all';render();return}if(a==='backemployee'){employee=null;render();return}if(a==='openchat'){thread=Number(b.dataset.id);ctx=null;draft='';adminAllowReply=false;render();return}if(a==='gotonotices'){tab='chat';thread=null;ctx=null;draft='';render();return}if(a==='replyinstruction'){const m=messages.find(x=>x.id===Number(b.dataset.id));if(canReplyTo(m)){ctx={category:'Respuesta a instrucción',replyTo:m.id,vehicle:m.vehicle||null,taskType:m.taskType||null,taskId:m.taskId||null};draft='';render();setTimeout(()=>main.querySelector('#draft')?.focus(),0)}return}if(a==='notebooking'||a==='notejob'){if(me?.role!=='admin')return;showDialog({type:'adminnote',taskType:a==='notebooking'?'booking':'job',taskId:Number(b.dataset.id)});return}if(a==='backchat'){thread=null;render();return}if(a==='atm-back-records'&&me?.role!=='admin'){tab='records';closeDialog();render();return}
-if((a==='atm-record-new-bitacora'||a==='atm-record-new-followup')&&me?.role!=='admin'){
- const cat=a==='atm-record-new-bitacora'?'Registrar bitácora':'Informar avance';
- showDialog({type:'vehicles',category:cat});return;
+if(a==='newjob'){showDialog({type:'newjob'});return}if(a==='editjob'){if(me?.role==='admin'&&jobs.some(x=>x.id===Number(b.dataset.job)))showDialog({type:'editjob',id:Number(b.dataset.job)});return}if(a==='prev'||a==='next'){day=dayAdd(day,a==='prev'?-7:7);week=day;render();return}if(a==='date'){day=b.dataset.day;week=day;render();return}if(a==='employee'){employee=Number(b.dataset.id);render();return}if(a==='pending'){employee='pending';filter='all';render();return}if(a==='backemployee'){employee=null;render();return}if(a==='openchat'){thread=Number(b.dataset.id);ctx=null;draft='';adminAllowReply=false;render();return}if(a==='gotonotices'){tab='chat';thread=null;ctx=null;draft='';render();return}if(a==='replyinstruction'){const m=messages.find(x=>x.id===Number(b.dataset.id));if(canReplyTo(m)){ctx={category:'Respuesta a instrucción',replyTo:m.id,vehicle:m.vehicle||null,taskType:m.taskType||null,taskId:m.taskId||null};draft='';render();setTimeout(()=>main.querySelector('#draft')?.focus(),0)}return}if(a==='notebooking'||a==='notejob'){if(me?.role!=='admin')return;showDialog({type:'adminnote',taskType:a==='notebooking'?'booking':'job',taskId:Number(b.dataset.id)});return}if(a==='backchat'){thread=null;render();return}if(a==='atm-followup-skip'&&dialog?.type==='atm-followup-choice'&&me?.role!=='admin'){
+ closeDialog();return;
+}
+if(a==='atm-followup-pick'&&dialog?.type==='atm-followup-choice'&&me?.role!=='admin'){
+ const pick=b.dataset.focus;
+ if(pick===dialog.previousId||pick===dialog.currentId)
+  atmShowFollowupEditor(dialog.day,pick);
+ return;
+}
+if(a==='atm-back-records'&&me?.role!=='admin'){tab='records';closeDialog();render();return}
+if(a==='atm-record-new-bitacora'&&me?.role!=='admin'){
+ showDialog({type:'vehicles',category:'Registrar bitácora'});return;
 }
 if((a==='atm-record-view-bitacoras'||a==='atm-record-view-followups')&&me?.role!=='admin'){
  logDay=atmActualToday();logWeek=logDay;logEmployee='all';
@@ -1988,6 +2071,12 @@ root.addEventListener('submit',e=>{e.preventDefault();const f=e.target;if(f.id==
  closeDialog();filter='all';render();notify(previous?'Agendamiento actualizado':assigned===null?'Vehículo recibido · Pendiente de asignar':'Vehículo agendado y asignado al técnico');return;
 }
 
+if(f.id==='atm-followup-form'){
+ if(me?.role==='admin'||dialog?.type!=='atm-followup-editor')return;
+ const saved=atmSaveChosenFollowup(dialog.day,dialog.focus,new FormData(f).get('entry'));
+ if(!saved)notify('No se pudo registrar el seguimiento. Revisá el vehículo y la fecha.');
+ return;
+}
 if(f.id==='atm-log-editor'&&me?.role!=='admin'&&dialog?.type==='logeditor'&&ctx?.category==='Registrar bitácora'){
    draft=String(new FormData(f).get('entry')||'');
    if(!draft.trim())return;
