@@ -149,6 +149,19 @@
 .log-detail-content p{margin:0;color:#274e37;font-size:12px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
 /* Bitácoras debajo de tareas: registros originales, sin avances. */
 #app .atm-work-with-log{display:flex;flex-direction:column;gap:6px;min-width:0}
+#app .atm-focus-surface{min-width:0}
+#app .atm-focus-surface.atm-focus-active>.booking-card,
+#app .atm-focus-surface.atm-focus-active>.item,
+#app .atm-focus-surface.atm-focus-active>.atm-standalone-card{
+ background:#e4efff!important;border:2px solid #2875d0!important;
+ box-shadow:0 0 0 1px rgba(40,117,208,.19)!important;color:#163b72!important
+}
+#app .atm-focus-surface.atm-focus-active .booking-label,
+#app .atm-focus-surface.atm-focus-active .booking-name,
+#app .atm-focus-surface.atm-focus-active .details strong,
+#app .atm-focus-surface.atm-focus-active .numb{color:#1255aa!important}
+#app .atm-focus-surface[data-atm-focus]{-webkit-user-select:none;user-select:none}
+
 #app .atm-work-log{background:#f0f8f2;border:1px solid #c9e2d1;border-left:3px solid #0d815c;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px}
 #app .atm-work-log>strong{font-size:11px;color:#0f6449}
 #app .atm-work-log-entry{display:flex;align-items:flex-start;gap:7px;border-top:1px solid #d9e8dc;padding-top:8px}
@@ -388,7 +401,7 @@ function atmStandaloneSources(date,scope){
  if(scope==='pending'||scope==='none')return [];
  const permitted=scope==='all'?new Set(staff().map(u=>Number(u.id))):new Set([Number(scope)]);
  for(const m of messages){
-  if(!['Registrar bitácora','Informar avance'].includes(m.category)||m.copySourceNoticeId||
+  if(!['Registrar bitácora','Informar avance'].includes(m.category)||atmIsFocusNotice(m)||m.copySourceNoticeId||
      m.workDay!==date||m.taskId!=null||!m.uuid||
      !cloud.lastNotice.has(m.uuid)||!permitted.has(Number(m.employeeId)))continue;
   const key=Number(m.employeeId)+'|'+atmVehicleKey(m.vehicle);
@@ -409,6 +422,60 @@ const standaloneLogs=(id,d)=>{
  return [...groups.values()];
 };
 const displaySchedule=(id,d)=>[...schedule(id,d),...standaloneLogs(id,d)];
+/* Selección de la actividad actual por empleado y día.
+   Se reutiliza el canal de bitácoras existente para sincronizar entre dispositivos
+   sin crear nuevas tablas, y el marcador nunca se muestra como bitácora real. */
+const ATM_FOCUS_PREFIX='[ATM_TAREA_ACTIVA_V1]';
+function atmFocusRead(m){
+ if(!m||m.copySourceNoticeId||m.category!=='Registrar bitácora'||
+    m.sender!==m.employeeId||typeof m.text!=='string'||!m.text.startsWith(ATM_FOCUS_PREFIX))return null;
+ try{
+  const data=JSON.parse(m.text.slice(ATM_FOCUS_PREFIX.length));
+  if(!data||typeof data.day!=='string'||! /^\d{4}-\d{2}-\d{2}$/.test(data.day)||
+     !['job','booking','standalone'].includes(data.kind)||
+     typeof data.uuid!=='string'||! /^[0-9a-f-]{36}$/i.test(data.uuid)||
+     m.workDay!==data.day)return null;
+  return data;
+ }catch(_){return null;}
+}
+const atmIsFocusNotice=m=>!!m&&m.category==='Registrar bitácora'&&
+ typeof m.text==='string'&&m.text.startsWith(ATM_FOCUS_PREFIX);
+function atmFocusWorkId(item){
+ if(!item)return null;
+ const source=item.kind==='standalone'?item.logs?.[0]?.uuid:item.record?.uuid;
+ return source?item.kind+':'+source:null;
+}
+function atmActiveWorkId(owner,date){
+ const queue=displaySchedule(owner,date),fallback=atmFocusWorkId(queue[0]);
+ if(!queue.length)return null;
+ let latest=null;
+ for(const m of messages){
+  if(m.employeeId!==Number(owner))continue;
+  const focus=atmFocusRead(m);
+  if(!focus||focus.day!==date)continue;
+  if(!latest||m.ts>latest.ts||(m.ts===latest.ts&&String(m.uuid)>String(latest.uuid)))
+   latest={id:focus.kind+':'+focus.uuid,ts:m.ts,uuid:m.uuid};
+ }
+ return latest&&queue.some(item=>atmFocusWorkId(item)===latest.id)?latest.id:fallback;
+}
+function atmMarkActiveWork(dayKey,workId){
+ if(me?.role==='admin'||!me?.uuid||!workId||dayKey!==atmActualToday())return false;
+ if(!cloud.ready||cloud.busy||cloud.loading||cloud.retryPaused||cloud.expiring)return false;
+ const [kind,uuid]=workId.split(':');
+ if(!['job','booking','standalone'].includes(kind)||! /^[0-9a-f-]{36}$/i.test(uuid))return false;
+ const item=displaySchedule(me.id,dayKey).find(x=>atmFocusWorkId(x)===workId);
+ if(!item||atmActiveWorkId(me.id,dayKey)===workId)return false;
+ const vehicle=item.kind==='job'?item.record.title:item.record.vehicle;
+ messages.push({
+  uuid:crypto.randomUUID(),id:nextMsg++,employeeId:me.id,sender:me.id,
+  category:'Registrar bitácora',vehicle:vehicle||'Actividad',workDay:dayKey,
+  text:ATM_FOCUS_PREFIX+JSON.stringify({day:dayKey,kind,uuid}),
+  taskType:null,taskId:null,allowReply:false,replyTo:null,ts:Date.now()
+ });
+ render(true);
+ return true;
+}
+
 const displayDayTotal=(d,scope)=>totalDay(d,scope)+(
  scope==='pending'||scope==='none'?0:scope==='all'?
  staff().reduce((n,u)=>n+standaloneLogs(u.id,d).length,0):standaloneLogs(scope,d).length
@@ -418,10 +485,10 @@ function atmReferencesForDay(date,employeeId){
  if(me?.role!=='admin')return [];
  const byUuid=new Map(messages.filter(m=>!!m.uuid).map(m=>[m.uuid,m]));
  return messages.filter(m=>{
-  if(m.category!=='Registrar bitácora'||!m.copySourceNoticeId||m.workDay!==date||
+  if(m.category!=='Registrar bitácora'||atmIsFocusNotice(m)||!m.copySourceNoticeId||m.workDay!==date||
      m.employeeId!==Number(employeeId))return false;
   const source=byUuid.get(m.copySourceNoticeId);
-  return !!source&&!source.copySourceNoticeId&&source.category==='Registrar bitácora';
+  return !!source&&!atmIsFocusNotice(source)&&!source.copySourceNoticeId&&source.category==='Registrar bitácora';
  });
 }
 function atmWorkReferences(item){
@@ -473,7 +540,12 @@ function taskLogsHTML(item){
  return reference+section('Registrar bitácora','📖 Bitácora del día')+section('Informar avance','📝 Seguimiento del día');
 }
 function workWithLogsHTML(item,i,editable,draggable){
- return '<div class="atm-work-with-log">'+workHTML(item,i,editable,draggable)+taskLogsHTML(item)+'</div>';
+ const record=item.record,focus=atmFocusWorkId(item);
+ const active=focus&&atmActiveWorkId(record.userId,record.day)===focus;
+ const selectable=focus&&me?.role!=='admin'&&me?.id===record.userId;
+ return '<div class="atm-work-with-log"><div class="atm-focus-surface'+(active?' atm-focus-active':'')+'"'+
+  (selectable?' data-atm-focus="'+esc(focus)+'" data-atm-focus-day="'+esc(record.day)+'"':'')+
+  '>'+workHTML(item,i,editable,draggable)+'</div>'+taskLogsHTML(item)+'</div>';
 }
 const bookedFor=(id,d)=>appointments.filter(a=>a.userId===Number(id)&&a.day===d).sort((a,b)=>(a.order??9999)-(b.order??9999)||a.id-b.id);
 const pendingBookings=(d)=>appointments.filter(a=>a.userId===null&&a.day===d).sort((a,b)=>a.id-b.id);
@@ -2080,7 +2152,7 @@ function noticeToUI(row,workByUuid){let owner=uiFor(row.target_employee_id),send
  const ts=new Date(row.created_at).getTime();let localId=cloud.noticeUiIds.get(row.id);if(!localId){localId=nextMsg++;cloud.noticeUiIds.set(row.id,localId)};
  return {uuid:row.id,id:localId,employeeId:owner,sender:send,category:localCat,vehicle:row.vehicle_caption||w?.vehicle||w?.title||null,text:row.body,allowReply:row.allow_reply,replyUuid:row.reply_to,replyTo:null,taskType:w?('title' in w?'job':'booking'):null,taskId:w?.id||null,workDay:row.work_day||w?.day||null,priority:row.priority_caption||w?.priority||null,taskDetail:row.task_snapshot||w?.instructions||w?.detail||'',copySourceDay:row.copied_from_work_day||null,copySourceNoticeId:row.copied_from_notice_id||null,ts};
 }
-function reportLogs(){logs=[];nextLog=1;messages.forEach(m=>{if(m.copySourceNoticeId||!['Informar avance','Reportar problema','Registrar bitácora'].includes(m.category))return;
+function reportLogs(){logs=[];nextLog=1;messages.forEach(m=>{if(atmIsFocusNotice(m)||m.copySourceNoticeId||!['Informar avance','Reportar problema','Registrar bitácora'].includes(m.category))return;
  const w=m.taskType==='job'?jobs.find(x=>x.id===m.taskId):appointments.find(x=>x.id===m.taskId);
  const workDay=m.workDay||w?.day||new Date(m.ts).toISOString().slice(0,10);
  logs.push({uuid:m.uuid,id:nextLog++,employeeId:m.employeeId,workDay,taskType:m.taskType||(m.taskId==null&&['Registrar bitácora','Informar avance'].includes(m.category)?'standalone':'booking'),taskId:m.taskId,vehicle:m.vehicle||w?.vehicle||w?.title||'Actividad',taskDetail:m.taskDetail||w?.instructions||w?.detail||'',priority:m.priority||w?.priority||null,category:m.category,text:m.text,copySourceDay:m.copySourceDay||null,copySourceNoticeId:m.copySourceNoticeId||null,ts:m.ts}); });}
