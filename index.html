@@ -1529,7 +1529,7 @@ root.addEventListener('pointerdown',e=>{
   if(!cloud.ready||cloud.busy||cloud.loading||cloud.retryPaused){
    notify('Esperá a que se sincronicen las tareas.');return;
   }
-  if(atmMarkActiveWork(hold.day,hold.focus))notify('Vehículo actual seleccionado');
+  atmMarkActiveWork(hold.day,hold.focus);
  },580);
  atmFocusHold=hold;
 },{passive:true});
