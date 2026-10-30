@@ -331,9 +331,9 @@
 #app .chathead{flex-shrink:0}
 #app .messages{min-height:0;flex:1 1 auto}
 
-/* IA Chat empleado: pulsación prolongada sobre mensaje propio, sin selección de texto de Android. */
-#app .bubble[data-atm-chat-own]{cursor:context-menu;touch-action:pan-y;user-select:none;-webkit-user-select:none;outline-offset:2px}
-#app .bubble[data-atm-chat-own]:focus-visible{outline:2px solid #0b7959}
+/* IA Chat administrador: pulsación prolongada sobre mensaje de la conversación, sin selección de texto de Android. */
+#app .bubble[data-atm-chat-manage]{cursor:context-menu;touch-action:pan-y;user-select:none;-webkit-user-select:none;outline-offset:2px}
+#app .bubble[data-atm-chat-manage]:focus-visible{outline:2px solid #0b7959}
 #app .atm-chat-message-preview{padding:10px 12px;background:#eef7f1;border-radius:10px;color:#1d4934;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:96px;overflow:auto}
 /* Opciones de consulta y problema: filas breves que solo muestran el nombre. */
 #app .atm-chat-simple-vehicle{min-height:48px;padding:11px 14px;align-items:center}
@@ -852,8 +852,9 @@ function tasksHTML(){
 }
 
 function inboxHTML(){return '<div class="page">'+'<div class="row">'+heading('Avisos y mensajes','')+'<button class="btn ghost" data-a="allmenu" aria-label="Opciones de avisos">⋮</button></div><div class="stack">'+staff().map(u=>{const m=convo(u.id).slice(-1)[0],n=unreadCount(u.id);return '<button class="item chat-list-button" data-a="openchat" data-id="'+u.id+'"><span class="chat-name-chip">'+esc(u.name)+'</span><span class="details"><small class="chat-preview">'+esc(m?.text||'Sin avisos todavía')+'</small></span>'+(n?'<span class="unread-number">'+n+'</span>':'')+'<span class="chat-chevron">›</span></button>'}).join('')+'</div></div>'}
-function atmCanEmployeeEditChatMessage(m){
- return !!me&&me.role!=='admin'&&!!m?.uuid&&m.sender===me.id&&m.employeeId===me.id&&
+function atmCanAdminManageChatMessage(m){
+ return !!me&&me.role==='admin'&&tab==='chat'&&thread!=null&&!!m?.uuid&&
+  m.employeeId===Number(thread)&&!!uuidFor(m.sender)&&!!uuidFor(m.employeeId)&&
   !m.copySourceNoticeId&&!['Registrar bitácora','Informar avance'].includes(m.category)&&
   !atmIsFocusNotice(m)&&typeof m.text==='string';
 }
@@ -865,10 +866,10 @@ function chatHTML(){
   const mine=m.sender===me.id,wasAnswered=messages.some(x=>x.sender===me.id&&x.replyTo===m.id);
   const fromGrok=users.some(u=>u.id===m.sender&&u.role==='admin');
   const displayCategory=fromGrok?(m.category==='Indicación del administrador'?'Indicaciones de Grok':'Grok'+(m.category&&m.category!=='Aviso general'?' · '+m.category:'')):m.category;
-  const editable=atmCanEmployeeEditChatMessage(m);
+  const editable=atmCanAdminManageChatMessage(m);
   return '<div class="bubble '+(mine?'mine':'')+(m.category==='Indicación del administrador'?' instruction':'')+
    '" data-notice-uuid="'+esc(m.uuid||'')+'"'+
-   (editable?' data-atm-chat-own="'+esc(m.uuid)+'" role="button" tabindex="0" aria-label="Mantener presionado para editar o borrar mensaje"':'')+'>'+
+   (editable?' data-atm-chat-manage="'+esc(m.uuid)+'" role="button" tabindex="0" aria-label="Administrador: mantener presionado para editar o borrar mensaje"':'')+'>'+
    (displayCategory?'<span class="cat">'+esc(displayCategory)+'</span><div></div>':'')+
    (m.vehicle?'<span class="small">🚘 '+esc(m.vehicle)+'</span>':'')+
    (m.replyTo?'<span class="small">↳ Respuesta a instrucción</span>':'')+
@@ -1241,7 +1242,7 @@ else if(dialog.type==='logdelete'){
 else if(dialog.type==='atm-chat-message-actions'){
  sheet=true;
  const m=messages.find(x=>x.uuid===dialog.uuid);
- h=atmCanEmployeeEditChatMessage(m)?
+ h=atmCanAdminManageChatMessage(m)?
   '<h3>Mensaje enviado</h3><div class="atm-chat-message-preview">'+esc(m.text.length>280?m.text.slice(0,280)+'…':m.text)+'</div>'+
   '<button type="button" class="opt" data-a="atm-chat-edit"><span class="ico">✎</span><span class="grow"><strong>Editar</strong></span>›</button>'+
   '<button type="button" class="opt" data-a="atm-chat-delete-ask"><span class="ico">🗑</span><span class="grow"><strong>Borrar</strong></span>›</button>'+footer:
@@ -1250,7 +1251,7 @@ else if(dialog.type==='atm-chat-message-actions'){
 else if(dialog.type==='atm-chat-message-delete'){
  sheet=true;
  const m=messages.find(x=>x.uuid===dialog.uuid);
- h=atmCanEmployeeEditChatMessage(m)?
+ h=atmCanAdminManageChatMessage(m)?
   '<h3>¿Borrar este mensaje?</h3><p class="sub">Se eliminará el mensaje enviado y no podrás recuperarlo.</p>'+
   '<div class="atm-chat-message-preview">'+esc(m.text.length>280?m.text.slice(0,280)+'…':m.text)+'</div>'+
   (dialog.error?'<div class="notice" role="alert">'+esc(dialog.error)+'</div>':'')+
@@ -1259,7 +1260,7 @@ else if(dialog.type==='atm-chat-message-delete'){
   '<div class="notice">Este mensaje no está disponible.</div>'+footer;
 }
 else if(dialog.type==='atm-chat-message-editor'){
- const m=messages.find(x=>x.uuid===dialog.uuid),canEdit=atmCanEmployeeEditChatMessage(m);
+ const m=messages.find(x=>x.uuid===dialog.uuid),canEdit=atmCanAdminManageChatMessage(m);
  h=canEdit?'<div class="row"><h3>Editar mensaje</h3><button type="button" class="btn ghost" data-a="close" aria-label="Cerrar sin guardar">×</button></div>'+
   '<div class="sub">'+esc(m.category||'Mensaje')+(m.vehicle?' · 🚘 '+esc(m.vehicle):'')+'</div>'+
   '<form class="stack" id="atm-chat-edit-form"><label class="field">Texto del mensaje<textarea id="atm-chat-edit-text" name="entry" rows="7" minlength="1" maxlength="8000" required'+(dialog.saving?' disabled':'')+'>'+esc(dialog.draftText??m.text)+'</textarea></label>'+
@@ -2183,20 +2184,20 @@ if(a==='editbooking'){const ap=appointments.find(x=>x.id===Number(b.dataset.book
  if(me?.role!=='admin')return;
  atmOpenStandaloneEditor(b.dataset.logUuid);return;
 }
-if(a==='newjob'){showDialog({type:'newjob'});return}if(a==='editjob'){if(me?.role==='admin'&&jobs.some(x=>x.id===Number(b.dataset.job)))showDialog({type:'editjob',id:Number(b.dataset.job)});return}if(a==='prev'||a==='next'){day=dayAdd(day,a==='prev'?-7:7);week=day;render();return}if(a==='date'){day=b.dataset.day;week=day;render();return}if(a==='employee'){employee=Number(b.dataset.id);render();return}if(a==='pending'){employee='pending';filter='all';render();return}if(a==='backemployee'){employee=null;render();return}if(a==='openchat'){thread=Number(b.dataset.id);ctx=null;draft='';adminAllowReply=false;render();return}if(a==='gotonotices'){tab='chat';thread=null;ctx=null;draft='';render();return}if(a==='atm-chat-edit'&&dialog?.type==='atm-chat-message-actions'&&me?.role!=='admin'){
+if(a==='newjob'){showDialog({type:'newjob'});return}if(a==='editjob'){if(me?.role==='admin'&&jobs.some(x=>x.id===Number(b.dataset.job)))showDialog({type:'editjob',id:Number(b.dataset.job)});return}if(a==='prev'||a==='next'){day=dayAdd(day,a==='prev'?-7:7);week=day;render();return}if(a==='date'){day=b.dataset.day;week=day;render();return}if(a==='employee'){employee=Number(b.dataset.id);render();return}if(a==='pending'){employee='pending';filter='all';render();return}if(a==='backemployee'){employee=null;render();return}if(a==='openchat'){thread=Number(b.dataset.id);ctx=null;draft='';adminAllowReply=false;render();return}if(a==='gotonotices'){tab='chat';thread=null;ctx=null;draft='';render();return}if(a==='atm-chat-edit'&&dialog?.type==='atm-chat-message-actions'&&me?.role==='admin'){
  const m=messages.find(x=>x.uuid===dialog.uuid);
- if(atmCanEmployeeEditChatMessage(m))
+ if(atmCanAdminManageChatMessage(m))
   showDialog({type:'atm-chat-message-editor',uuid:m.uuid,originalText:m.text,draftText:m.text,error:'',saving:false});
  return;
 }
-if(a==='atm-chat-delete-ask'&&dialog?.type==='atm-chat-message-actions'&&me?.role!=='admin'){
+if(a==='atm-chat-delete-ask'&&dialog?.type==='atm-chat-message-actions'&&me?.role==='admin'){
  const m=messages.find(x=>x.uuid===dialog.uuid);
- if(atmCanEmployeeEditChatMessage(m))
+ if(atmCanAdminManageChatMessage(m))
   showDialog({type:'atm-chat-message-delete',uuid:m.uuid,originalText:m.text,error:'',saving:false});
  return;
 }
-if(a==='atm-chat-delete-confirm'&&dialog?.type==='atm-chat-message-delete'&&me?.role!=='admin'){
- atmDeleteEmployeeChatMessage();return;
+if(a==='atm-chat-delete-confirm'&&dialog?.type==='atm-chat-message-delete'&&me?.role==='admin'){
+ atmDeleteAdminChatMessage();return;
 }
 if(a==='replyinstruction'){const m=messages.find(x=>x.id===Number(b.dataset.id));if(canReplyTo(m)){ctx={category:'Respuesta a instrucción',replyTo:m.id,vehicle:m.vehicle||null,taskType:m.taskType||null,taskId:m.taskId||null};draft='';render();setTimeout(()=>main.querySelector('#draft')?.focus(),0)}return}if(a==='notebooking'||a==='notejob'){if(me?.role!=='admin')return;showDialog({type:'adminnote',taskType:a==='notebooking'?'booking':'job',taskId:Number(b.dataset.id)});return}if(a==='backchat'){thread=null;render();return}if(a==='atm-followup-skip'&&dialog?.type==='atm-followup-choice'&&me?.role!=='admin'){
  closeDialog();return;
@@ -2298,11 +2299,11 @@ function atmChatAccessDenied(error){
  const message=String(error?.message||'');
  return code==='42501'||/permission denied|row.level.security|insufficient privilege|not authorized|not allowed/i.test(message);
 }
-/* Solo se elimina un mensaje propio y exactamente el mismo UUID.
+/* Solo el administrador elimina el mensaje seleccionado y exactamente el mismo UUID.
    La base debe confirmar la eliminación; si la rechaza, se conserva el mensaje. */
-async function atmDeleteEmployeeChatMessage(){
+async function atmDeleteAdminChatMessage(){
  const page=dialog,m=messages.find(x=>x.uuid===page?.uuid);
- if(page?.type!=='atm-chat-message-delete'||page.saving||!atmCanEmployeeEditChatMessage(m))return;
+ if(page?.type!=='atm-chat-message-delete'||page.saving||!atmCanAdminManageChatMessage(m))return;
  if(m.text!==page.originalText){
   page.error='El mensaje cambió mientras intentabas borrarlo. Cerrá y volvé a abrirlo.';
   overlay.innerHTML=modalHTML();return;
@@ -2316,6 +2317,10 @@ async function atmDeleteEmployeeChatMessage(){
   overlay.innerHTML=modalHTML();return;
  }
  const author=me.uuid,confirmed=cloud.lastNotice.has(m.uuid);
+ if(!confirmed&&m.sender!==me.id){
+  page.error='El mensaje aún no está confirmado en el servidor y no puede borrarse.';
+  overlay.innerHTML=modalHTML();return;
+ }
  if(confirmed&&(draftSignature()!==cloud.revision||atmReadOutbox(author).length)){
   page.error='Hay mensajes pendientes de guardar. Esperá a que termine la sincronización.';
   overlay.innerHTML=modalHTML();return;
@@ -2328,8 +2333,8 @@ async function atmDeleteEmployeeChatMessage(){
    if(authError||!session?.session?.access_token||session.session.user?.id!==author)
     throw new Error('La sesión no está disponible. Volvé a iniciar sesión.');
    const {data:deleted,error:deleteError}=await cloud.sb.from('atm_notices')
-    .delete().eq('id',m.uuid).eq('author_id',author)
-    .eq('target_employee_id',author).eq('body',page.originalText)
+    .delete().eq('id',m.uuid).eq('author_id',uuidFor(m.sender))
+    .eq('target_employee_id',uuidFor(m.employeeId)).eq('body',page.originalText)
     .is('copied_from_notice_id',null).select('id').maybeSingle();
    if(deleteError)throw deleteError;
    if(!deleted||deleted.id!==m.uuid)
@@ -2346,17 +2351,17 @@ async function atmDeleteEmployeeChatMessage(){
   console.warn('No se pudo borrar el mensaje propio:',e);
   page.permissionDenied=atmChatAccessDenied(e);
   page.error=page.permissionDenied?
-   'El servidor no permite borrar este mensaje con los permisos actuales. El mensaje original se conservó.':
+   'El servidor no permite borrar este mensaje con los permisos actuales de Administración. El original se conservó.':
    String(e?.message||'No se pudo borrar el mensaje. El original se conservó.');
  }finally{
   cloud.busy=false;page.saving=false;
   if(dialog===page)overlay.innerHTML=modalHTML();
  }
 }
-/* Corregir el cuerpo de un mensaje propio sin emitir un nuevo aviso. */
-async function atmSaveEmployeeChatEdit(form){
+/* El administrador corrige el cuerpo del mensaje seleccionado sin emitir un nuevo aviso. */
+async function atmSaveAdminChatEdit(form){
  const page=dialog,m=messages.find(x=>x.uuid===page?.uuid);
- if(page?.type!=='atm-chat-message-editor'||page.saving||!atmCanEmployeeEditChatMessage(m))return;
+ if(page?.type!=='atm-chat-message-editor'||page.saving||!atmCanAdminManageChatMessage(m))return;
  const value=String(new FormData(form).get('entry')||'').trim();
  if(!value||value.length>8000){page.error='Escribí un mensaje válido de hasta 8,000 caracteres.';overlay.innerHTML=modalHTML();return;}
  if(m.text!==page.originalText){page.error='El mensaje cambió. Cerrá y volvé a abrir su edición.';overlay.innerHTML=modalHTML();return;}
@@ -2366,6 +2371,10 @@ async function atmSaveEmployeeChatEdit(form){
   overlay.innerHTML=modalHTML();return;
  }
  const author=me.uuid,confirmed=cloud.lastNotice.has(m.uuid);
+ if(!confirmed&&m.sender!==me.id){
+  page.error='El mensaje aún no está confirmado en el servidor y no puede editarse.';
+  overlay.innerHTML=modalHTML();return;
+ }
  if(confirmed&&(draftSignature()!==cloud.revision||atmReadOutbox(author).length)){
   page.error='Hay mensajes pendientes de sincronización. Reintentá cuando se hayan guardado.';
   overlay.innerHTML=modalHTML();return;
@@ -2378,8 +2387,8 @@ async function atmSaveEmployeeChatEdit(form){
    if(sessionError||session?.session?.user?.id!==author||!session.session.access_token)
     throw new Error('Tu sesión expiró. Ingresá nuevamente.');
    const {data:updated,error:writeError}=await cloud.sb.from('atm_notices')
-    .update({body:value}).eq('id',m.uuid).eq('author_id',author)
-    .eq('target_employee_id',author).eq('body',page.originalText)
+    .update({body:value}).eq('id',m.uuid).eq('author_id',uuidFor(m.sender))
+    .eq('target_employee_id',uuidFor(m.employeeId)).eq('body',page.originalText)
     .is('copied_from_notice_id',null).select('id,body').maybeSingle();
    if(writeError)throw writeError;
    if(!updated||updated.id!==m.uuid||updated.body!==value)
@@ -2394,7 +2403,7 @@ async function atmSaveEmployeeChatEdit(form){
   console.warn('No se pudo actualizar el mensaje enviado:',e);
   page.permissionDenied=atmChatAccessDenied(e);
   page.error=page.permissionDenied?
-   'El servidor no permite editar este mensaje con los permisos actuales. El contenido original se conservó.':
+   'El servidor no permite editar este mensaje con los permisos actuales de Administración. El original se conservó.':
    String(e?.message||'No se pudo guardar la corrección. El mensaje original se conservó.');
  }finally{
   cloud.busy=false;page.saving=false;
@@ -2403,9 +2412,9 @@ async function atmSaveEmployeeChatEdit(form){
 }
 root.addEventListener('submit',e=>{
  if(e.target.id!=='atm-chat-edit-form')return;
- e.preventDefault();e.stopImmediatePropagation();atmSaveEmployeeChatEdit(e.target);
+ e.preventDefault();e.stopImmediatePropagation();atmSaveAdminChatEdit(e.target);
 },true);
-/* Chat: mantener presionado 580 ms para editar o borrar.
+/* Chat del administrador: mantener presionado 580 ms para editar o borrar.
    Un toque rápido no hace nada; desplazar el historial cancela la pulsación. */
 let atmChatHold=null,atmChatSuppressClickUntil=0;
 function atmCancelChatHold(){
@@ -2413,17 +2422,17 @@ function atmCancelChatHold(){
  atmChatHold=null;
 }
 root.addEventListener('pointerdown',e=>{
- if(me?.role==='admin'||tab!=='chat'||dialog||e.button!==0||e.target.closest('button'))return;
- const card=e.target.closest('[data-atm-chat-own]');
+ if(me?.role!=='admin'||tab!=='chat'||thread==null||dialog||e.button!==0||e.target.closest('button'))return;
+ const card=e.target.closest('[data-atm-chat-manage]');
  if(!card||!main.contains(card))return;
  const uuid=card.dataset.atmChatOwn,m=messages.find(x=>x.uuid===uuid);
- if(!atmCanEmployeeEditChatMessage(m))return;
+ if(!atmCanAdminManageChatMessage(m))return;
  atmCancelChatHold();
  const hold={pid:e.pointerId,x:e.clientX,y:e.clientY,card,uuid,timer:null};
  hold.timer=setTimeout(()=>{
-  if(atmChatHold!==hold||!card.isConnected||dialog||me?.role==='admin'||tab!=='chat')return;
+  if(atmChatHold!==hold||!card.isConnected||dialog||me?.role!=='admin'||tab!=='chat'||thread==null)return;
   atmChatHold=null;atmChatSuppressClickUntil=Date.now()+850;
-  if(atmCanEmployeeEditChatMessage(messages.find(x=>x.uuid===uuid)))
+  if(atmCanAdminManageChatMessage(messages.find(x=>x.uuid===uuid)))
    showDialog({type:'atm-chat-message-actions',uuid});
  },580);
  atmChatHold=hold;
@@ -2435,25 +2444,25 @@ window.addEventListener('pointermove',e=>{
 window.addEventListener('pointerup',e=>{if(atmChatHold?.pid===e.pointerId)atmCancelChatHold();},{passive:true});
 window.addEventListener('pointercancel',e=>{if(atmChatHold?.pid===e.pointerId)atmCancelChatHold();},{passive:true});
 root.addEventListener('contextmenu',e=>{
- const card=e.target.closest('[data-atm-chat-own]');
- if(!card||me?.role==='admin'||tab!=='chat')return;
+ const card=e.target.closest('[data-atm-chat-manage]');
+ if(!card||me?.role!=='admin'||tab!=='chat'||thread==null)return;
  e.preventDefault();
  const m=messages.find(x=>x.uuid===card.dataset.atmChatOwn);
- if(!dialog&&atmCanEmployeeEditChatMessage(m)){
+ if(!dialog&&atmCanAdminManageChatMessage(m)){
   atmCancelChatHold();atmChatSuppressClickUntil=Date.now()+850;
   showDialog({type:'atm-chat-message-actions',uuid:m.uuid});
  }
 },true);
 root.addEventListener('click',e=>{
- if(Date.now()<atmChatSuppressClickUntil&&e.target.closest('[data-atm-chat-own]')){
+ if(Date.now()<atmChatSuppressClickUntil&&e.target.closest('[data-atm-chat-manage]')){
   e.preventDefault();e.stopImmediatePropagation();
  }
 },true);
 root.addEventListener('keydown',e=>{
- if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-atm-chat-own]')){
+ if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-atm-chat-manage]')){
   e.preventDefault();
   const m=messages.find(x=>x.uuid===e.target.dataset.atmChatOwn);
-  if(!dialog&&atmCanEmployeeEditChatMessage(m))showDialog({type:'atm-chat-message-actions',uuid:m.uuid});
+  if(!dialog&&atmCanAdminManageChatMessage(m))showDialog({type:'atm-chat-message-actions',uuid:m.uuid});
  }
 },true);
 root.addEventListener('submit',e=>{
