@@ -338,6 +338,9 @@
 #app .atm-chat-selection-toolbar span{flex:1;min-width:100px}
 #app .atm-chat-selection-toolbar button{border:1px solid #afd3be;border-radius:9px;background:white;color:#08674e;font-weight:800;font-size:12px;padding:8px 11px}
 #app .atm-chat-selection-toolbar button[data-a="atm-chat-edit-selected"]{background:#0e7053;color:#fff;border-color:#0e7053}
+/* Opciones de consulta y problema: filas breves que solo muestran el nombre. */
+#app .atm-chat-simple-vehicle{min-height:48px;padding:11px 14px;align-items:center}
+#app .atm-chat-simple-vehicle strong{font-size:14px}
 </style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script><link href="./manifest.webmanifest" rel="manifest"/><meta content="#0e604d" name="theme-color"/></head><body><div id="app"><div class="header" id="head"></div><div class="content" id="main"></div><div class="nav" id="nav"></div><div id="overlay"></div><div class="floattrash" id="trash">🗑</div><div class="toast" id="toast"></div></div>
 <script>
 (()=>{
@@ -1159,6 +1162,15 @@ else if(dialog.type==='newjob'||dialog.type==='editjob'){
 else if(dialog.type==='categories'){sheet=true;h='<div class="row"><h3>¿Qué querés comunicar?</h3><button class="btn ghost" data-a="close">×</button></div>'+opts.filter(o=>!['Registrar bitácora','Informar avance'].includes(o[0])).map(o=>'<button class="opt" data-a="category" data-cat="'+esc(o[0])+'"><span class="ico">'+o[2]+'</span><span class="grow"><strong>'+esc(o[0])+'</strong><small>'+esc(o[1])+'</small></span>›</button>').join('')}
 else if(dialog.type==='vehicles'){
  sheet=true;const dates=atmReportDates(),j=dates.flatMap(d=>list(me.id,d)),b=dates.flatMap(d=>bookedFor(me.id,d)),allowNew=['Registrar bitácora','Informar avance'].includes(dialog.category),allowIndependent=['Consultas y solicitudes','Reportar problema'].includes(dialog.category),standalone=allowNew?dates.flatMap(d=>standaloneLogs(me.id,d)):[];
+ if(allowIndependent){
+  /* Consultas y problemas: solo nombres, sin detalles ni subtítulos. */
+  const simpleOption=(action,attr,id,title)=>'<button type="button" class="opt atm-chat-simple-vehicle" data-a="'+action+'" '+attr+'="'+id+'"><span class="grow"><strong>'+esc(title)+'</strong></span>›</button>';
+  h='<div class="row"><h3>'+esc(dialog.category)+'</h3><button type="button" class="btn ghost" data-a="close" aria-label="Cerrar">×</button></div>'+
+   b.map(x=>simpleOption('selectbooking','data-booking',x.id,x.vehicle)).join('')+
+   j.map(x=>simpleOption('selectcar','data-job',x.id,x.title)).join('')+
+   '<button type="button" class="opt atm-chat-simple-vehicle" data-a="atm-independent-chat"><span class="grow"><strong>'+(dialog.category==='Reportar problema'?'Problema independiente':'Consulta independiente')+'</strong></span>›</button>'+
+   '<button type="button" class="btn ghost" data-a="backcategories">Volver</button>';
+ }else{
  h='<div class="row"><h3>'+esc(dialog.category)+'</h3><button class="btn ghost" data-a="close">×</button></div><p class="sub">'+(allowNew?'Elegí un vehículo asignado o agregá uno nuevo para '+(dialog.category==='Informar avance'?'registrar su seguimiento.':'registrar su bitácora.'):allowIndependent?'Elegí una tarea o vehículo, o escribí sin asociarlo a ninguno.':'Elegí el vehículo que tenés asignado para hoy.')+'</p>'+
  (b.length?'<div class="section-title">VEHÍCULOS AGENDADOS</div>'+b.map(x=>'<button class="opt" data-a="selectbooking" data-booking="'+x.id+'"><span class="ico">🚘</span><span class="grow"><strong>'+esc(x.vehicle)+'</strong><small>'+esc(x.instructions)+(dates.length>1?' · '+esc(fmt(x.day)):'')+'</small><span class="priority-label priority-'+esc(x.priority)+'" style="margin-top:6px">'+esc((PRIORITIES[x.priority]||PRIORITIES.yellow).name)+'</span></span>›</button>').join(''):'')+
  (j.length?'<div class="section-title">TAREAS CON VEHÍCULO</div>'+j.map(x=>'<button class="opt" data-a="selectcar" data-job="'+x.id+'"><span class="ico">🚗</span><span class="grow"><strong>'+esc(x.title)+'</strong><small>'+esc(x.detail)+(dates.length>1?' · '+esc(fmt(x.day)):'')+'</small></span>›</button>').join(''):'')+
@@ -1167,6 +1179,7 @@ else if(dialog.type==='vehicles'){
  (allowIndependent?'<button type="button" class="opt" data-a="atm-independent-chat"><span class="ico">💬</span><span class="grow"><strong>'+(dialog.category==='Reportar problema'?'Problema independiente':'Consulta independiente')+'</strong><small>Escribir libremente, sin relacionarlo con un vehículo</small></span>›</button>':'')+
  (!j.length&&!b.length&&!allowNew&&!allowIndependent?'<div class="notice">No tenés vehículos asignados para hoy. El administrador puede agendarlos desde Calendario.</div>':'')+
  '<button class="btn ghost" data-a="backcategories">Volver</button>';
+ }
 }
 
 else if(dialog.type==='atm-followup-choice'){
