@@ -161,6 +161,11 @@
 #app .atm-focus-surface.atm-focus-active .details strong,
 #app .atm-focus-surface.atm-focus-active .numb{color:#1255aa!important}
 #app .atm-focus-surface[data-atm-focus]{-webkit-user-select:none;user-select:none}
+/* El número de orden es el único control para cambiar la tarea azul en Administración. */
+#app .atm-admin-focus-number{display:inline-flex;align-items:center;justify-content:center;
+ min-width:42px;min-height:42px;box-sizing:border-box;cursor:pointer;touch-action:manipulation}
+#app .atm-admin-focus-number:focus-visible{outline:2px solid #2875d0;outline-offset:3px}
+
 
 #app .atm-work-log{background:#f0f8f2;border:1px solid #c9e2d1;border-left:3px solid #0d815c;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px}
 #app .atm-work-log>strong{font-size:11px;color:#0f6449}
@@ -440,8 +445,11 @@ const displaySchedule=(id,d)=>[...schedule(id,d),...standaloneLogs(id,d)];
    sin crear nuevas tablas, y el marcador nunca se muestra como bitácora real. */
 const ATM_FOCUS_PREFIX='[ATM_TAREA_ACTIVA_V1]';
 function atmFocusRead(m){
- if(!m||m.copySourceNoticeId||m.category!=='Registrar bitácora'||
-    m.sender!==m.employeeId||typeof m.text!=='string'||!m.text.startsWith(ATM_FOCUS_PREFIX))return null;
+ if(!atmIsFocusNotice(m))return null;
+ const employeeMarker=m.category==='Registrar bitácora'&&m.sender===m.employeeId;
+ const adminMarker=m.category==='Indicación del administrador'&&
+   users.some(u=>u.id===m.sender&&u.role==='admin'&&u.active);
+ if(!employeeMarker&&!adminMarker)return null;
  try{
   const data=JSON.parse(m.text.slice(ATM_FOCUS_PREFIX.length));
   if(!data||typeof data.day!=='string'||! /^\d{4}-\d{2}-\d{2}$/.test(data.day)||
@@ -451,7 +459,8 @@ function atmFocusRead(m){
   return data;
  }catch(_){return null;}
 }
-const atmIsFocusNotice=m=>!!m&&m.category==='Registrar bitácora'&&
+const atmIsFocusNotice=m=>!!m&&!m.copySourceNoticeId&&
+ ['Registrar bitácora','Indicación del administrador'].includes(m.category)&&
  typeof m.text==='string'&&m.text.startsWith(ATM_FOCUS_PREFIX);
 function atmFocusWorkId(item){
  if(!item)return null;
@@ -490,6 +499,57 @@ function atmMarkActiveWork(dayKey,workId){
  return true;
 }
 
+
+/* Administración selecciona la tarea en azul usando el canal de indicaciones ya permitido.
+   Inserción única, sin otro registro técnico ni push; solo se pinta tras respuesta del servidor. */
+async function atmAdminSelectActiveWork(owner,date,focus){
+ if(me?.role!=='admin'||!cloud.ready||!cloud.sb||cloud.busy||cloud.loading||
+    cloud.retryPaused||cloud.expiring||date!==atmActualToday()||
+    !staff().some(u=>u.id===Number(owner))||!uuidFor(owner))return false;
+ const item=displaySchedule(owner,date).find(x=>atmFocusWorkId(x)===focus);
+ if(!item){notify('La actividad ya no está disponible.');return false;}
+ if(atmActiveWorkId(owner,date)===focus){notify('Esta actividad ya está seleccionada.');return true;}
+ if(draftSignature()!==cloud.revision||atmReadOutbox(me.uuid).length){
+  notify('Primero deben terminar de sincronizarse los cambios pendientes.');return false;
+ }
+ const sep=String(focus).indexOf(':'),kind=String(focus).slice(0,sep),
+  uuid=String(focus).slice(sep+1);
+ if(!['job','booking','standalone'].includes(kind)||! /^[0-9a-f-]{36}$/i.test(uuid))return false;
+ const last=messages.reduce((n,m)=>m.employeeId===Number(owner)&&atmFocusRead(m)?.day===date?
+   Math.max(n,m.ts||0):n,0);
+ const marker={uuid:crypto.randomUUID(),id:nextMsg,employeeId:Number(owner),sender:me.id,
+  category:'Indicación del administrador',vehicle:atmFocusVehicleName(item),
+  workDay:date,text:ATM_FOCUS_PREFIX+JSON.stringify({day:date,kind,uuid}),
+  taskType:null,taskId:null,allowReply:false,replyTo:null,
+  ts:Math.max(Date.now(),last+1)};
+ const oldSignature=draftSignature();
+ cloud.busy=true;
+ let saved=false;
+ try{
+  const {data:session,error:sessionError}=await cloud.sb.auth.getSession();
+  if(sessionError||!session?.session?.access_token||session.session.user?.id!==me.uuid)
+   throw new Error('La sesión del administrador no está disponible.');
+  const row=rowForMessage(marker);
+  const {data, error}=await cloud.sb.from('atm_notices').insert(row).select('id,created_at').single();
+  if(error)throw error;
+  if(data?.id!==marker.uuid)throw new Error('El servidor no confirmó la selección de la actividad.');
+  marker.ts=Date.parse(data.created_at)||marker.ts;
+  nextMsg++;messages.push(marker);cloud.lastNotice.add(marker.uuid);
+  if(cloud.revision===oldSignature&&
+     messages.filter(x=>x!==marker).every(x=>cloud.lastNotice.has(x.uuid))){
+   cloud.revision=draftSignature();
+  }
+  saved=true;render(true);notify('Actividad actualizada para '+(user(owner)?.name||'el técnico'));
+  return true;
+ }catch(e){
+  console.warn('No se pudo guardar la actividad actual del técnico:',e);
+  notify('No se pudo sincronizar el cambio de actividad. La selección anterior se conserva.');
+  return false;
+ }finally{
+  cloud.busy=false;
+  if(saved&&draftSignature()!==cloud.revision)cloudChange();
+ }
+}
 
 /* El cambio de actividad sugiere el vehículo anterior y permite elegir cualquier
    tarea del empleado; los seguimientos conservan su mismo formato de avisos. */
@@ -607,9 +667,16 @@ function workWithLogsHTML(item,i,editable,draggable){
  const record=item.record,focus=atmFocusWorkId(item);
  const active=focus&&atmActiveWorkId(record.userId,record.day)===focus;
  const selectable=focus&&me?.role!=='admin'&&me?.id===record.userId;
+ const adminSelectable=focus&&me?.role==='admin'&&editable&&record.day===atmActualToday()&&
+  staff().some(u=>u.id===record.userId);
+ const card=workHTML(item,i,editable,draggable);
+ const numberedCard=adminSelectable?card.replace('<span class="numb">',
+  '<span class="numb atm-admin-focus-number" role="button" tabindex="0" aria-label="Marcar como actividad actual" title="Tocar el número para seleccionar esta actividad">'):card;
  return '<div class="atm-work-with-log"><div class="atm-focus-surface'+(active?' atm-focus-active':'')+'"'+
   (selectable?' data-atm-focus="'+esc(focus)+'" data-atm-focus-day="'+esc(record.day)+'"':'')+
-  '>'+workHTML(item,i,editable,draggable)+'</div>'+taskLogsHTML(item)+'</div>';
+  (adminSelectable?' data-atm-admin-focus="'+esc(focus)+'" data-atm-admin-owner="'+record.userId+
+    '" data-atm-admin-day="'+esc(record.day)+'"':'')+
+  '>'+numberedCard+'</div>'+taskLogsHTML(item)+'</div>';
 }
 const bookedFor=(id,d)=>appointments.filter(a=>a.userId===Number(id)&&a.day===d).sort((a,b)=>(a.order??9999)-(b.order??9999)||a.id-b.id);
 const pendingBookings=(d)=>appointments.filter(a=>a.userId===null&&a.day===d).sort((a,b)=>a.id-b.id);
@@ -657,15 +724,20 @@ const onDay=(d,scope)=>jobs.filter(x=>x.day===d&&(scope==='all'||(scope!=='pendi
 const convo=(id)=>{
  const cutoff=seen[me?.uuid+':'+uuidFor(id)];
  const until=cutoff&&typeof cutoff==='object'&&Number.isFinite(cutoff.until)?cutoff.until:0;
- return messages.filter(m=>m.employeeId===Number(id)&&m.ts>until&&!['Registrar bitácora','Informar avance'].includes(m.category));
+ return messages.filter(m=>m.employeeId===Number(id)&&m.ts>until&&
+  !['Registrar bitácora','Informar avance'].includes(m.category)&&!atmIsFocusNotice(m));
 };
 const msgThreadId=()=>me?.role==='admin'?thread:me?.id;
-const unreadCount=(id)=>!me?0:messages.filter(x=>x.employeeId===Number(id)&&!['Registrar bitácora','Informar avance'].includes(x.category)&&x.sender!==me.id&&x.uuid&&!cloud.readNoticeIds.has(x.uuid)).length;
+const unreadCount=(id)=>!me?0:messages.filter(x=>x.employeeId===Number(id)&&
+ !['Registrar bitácora','Informar avance'].includes(x.category)&&!atmIsFocusNotice(x)&&
+ x.sender!==me.id&&x.uuid&&!cloud.readNoticeIds.has(x.uuid)).length;
 const totalUnread=()=>!me?0:me.role==='admin'?staff().reduce((n,x)=>n+unreadCount(x.id),0):unreadCount(me.id);
 const unreadCalendar=()=>!me||me.role==='admin'?[]:calendarChanges.filter(c=>c.recipient_id===me.uuid&&!c.read_at&&!cloud.readCalendarIds.has(c.id));
 function markRead(id){
  if(!me||!id||!cloud.sb)return;
- const author=me.uuid,unread=messages.filter(m=>m.employeeId===Number(id)&&!['Registrar bitácora','Informar avance'].includes(m.category)&&m.sender!==me.id&&m.uuid&&!cloud.readNoticeIds.has(m.uuid)).map(m=>m.uuid);
+ const author=me.uuid,unread=messages.filter(m=>m.employeeId===Number(id)&&
+ !['Registrar bitácora','Informar avance'].includes(m.category)&&!atmIsFocusNotice(m)&&
+ m.sender!==me.id&&m.uuid&&!cloud.readNoticeIds.has(m.uuid)).map(m=>m.uuid);
  if(!unread.length)return;
  unread.forEach(x=>cloud.readNoticeIds.add(x));
  cloud.sb.from('atm_notice_reads').upsert(unread.map(notice_id=>({notice_id,user_id:author})),{onConflict:'notice_id,user_id',ignoreDuplicates:true}).then(({error})=>{
@@ -1748,6 +1820,22 @@ root.addEventListener('click',e=>{
 },true);
 /* Administrador: toque corto edita. Solo mantener presionada la tarjeta
    abre la indicación para el técnico; el asa ⋮⋮ conserva el arrastre. */
+/* Captura del número antes del clic de la tarjeta: no abre edición ni notificación. */
+root.addEventListener('click',e=>{
+ const number=e.target.closest('.atm-admin-focus-number');
+ if(!number)return;
+ const surface=number.closest('.atm-focus-surface[data-atm-admin-focus]');
+ if(!surface||!main.contains(surface))return;
+ e.preventDefault();e.stopImmediatePropagation();
+ if(me?.role!=='admin'||dialog)return;
+ atmAdminSelectActiveWork(Number(surface.dataset.atmAdminOwner),surface.dataset.atmAdminDay,
+  surface.dataset.atmAdminFocus);
+},true);
+root.addEventListener('keydown',e=>{
+ const number=e.target.closest('.atm-admin-focus-number');
+ if(!number||(e.key!=='Enter'&&e.key!==' '))return;
+ e.preventDefault();e.stopImmediatePropagation();number.click();
+},true);
 let atmAdminNoteHold=null,atmAdminNoteSuppressClickUntil=0;
 function atmCancelAdminNoteHold(){
  if(atmAdminNoteHold?.timer)clearTimeout(atmAdminNoteHold.timer);
@@ -1755,7 +1843,7 @@ function atmCancelAdminNoteHold(){
 }
 root.addEventListener('pointerdown',e=>{
  if(me?.role!=='admin'||dialog||e.button!==0||(tab!=='calendar'&&tab!=='tasks'))return;
- if(e.target.closest('.atm-task-drag-handle'))return;
+ if(e.target.closest('.atm-task-drag-handle')||e.target.closest('.atm-admin-focus-number'))return;
  const card=e.target.closest('[data-atm-admin-note]');
  if(!card||!main.contains(card))return;
  const type=card.dataset.atmAdminNote,rawId=card.dataset.atmAdminNoteId;
@@ -2793,7 +2881,8 @@ async function cloudWrite(){
    }
    cloud.lastNotice.add(m.uuid);atmForgetPending(m.uuid,expectedId);updateSendCheck(m.uuid);
    /* Bitácoras y seguimientos son registros técnicos, no mensajes de chat. */
-   if(!['Registrar bitácora','Informar avance'].includes(m.category))await atmPushDispatch('notice',m.uuid);
+   if(!['Registrar bitácora','Informar avance'].includes(m.category)&&!atmIsFocusNotice(m))
+    await atmPushDispatch('notice',m.uuid);
   }
   if(me.role==='admin')for(const old of [...cloud.lastWork.keys()]){
    if(seenIds.has(old))continue;
