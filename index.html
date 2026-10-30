@@ -345,6 +345,16 @@
 #app .atm-chat-simple-vehicle strong{font-size:14px}
 /* Menú Registros: solamente ícono y nombre, sin subtítulos. */
 #app .atm-record-compact{min-height:56px;padding:10px 14px;align-items:center}
+/* Botón de actualización manual para administración y técnicos. */
+#app .header .atm-refresh-trigger{width:34px;height:34px;min-width:34px;padding:2px;border:1px solid #ffffff55;
+ background:#ffffff18;border-radius:10px;color:#fff;font-size:25px;line-height:1;display:grid;place-items:center}
+#app .chathead .atm-refresh-trigger{font-size:24px;line-height:1;padding:3px 4px;flex:0 0 auto}
+#app .header .atm-refresh-trigger:focus-visible,#app .chathead .atm-refresh-trigger:focus-visible{
+ outline:2px solid #dafee8;outline-offset:2px}
+@media(max-width:380px){
+ #app .chathead{gap:5px;padding-left:7px;padding-right:7px}
+ #app .chathead .atm-refresh-trigger{padding:2px}
+}
 </style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script><link href="./manifest.webmanifest" rel="manifest"/><meta content="#0e604d" name="theme-color"/></head><body><div id="app"><div class="header" id="head"></div><div class="content" id="main"></div><div class="nav" id="nav"></div><div id="overlay"></div><div class="floattrash" id="trash">🗑</div><div class="toast" id="toast"></div></div>
 <script>
 (()=>{
@@ -965,7 +975,7 @@ function chatHTML(){
  }).join('');
  const chatContext=ctx?.category==='Registrar bitácora'?null:ctx;
  const placeholder=isAdmin?'Escribí un aviso o instrucción...':chatContext?.replyTo?'Escribí tu respuesta...':chatContext?.category?'Escribí el reporte...':'Elegí una categoría con + para escribir';
- return '<div class="chatframe"><div class="chathead">'+(isAdmin?'<button data-a="backchat" aria-label="Volver a conversaciones">‹</button>':'<button data-a="backcalendar" aria-label="Volver al calendario">‹</button>')+avatarHTML+'<span class="grow"><strong>'+esc(isAdmin?u.name:'Administración')+'</strong><small>Automotriz Medina SV</small></span><button data-a="openlogs" title="Bitácoras" aria-label="Bitácoras">▤</button><button data-a="chatmenu" title="Opciones">⋮</button></div>'+
+ return '<div class="chatframe"><div class="chathead">'+(isAdmin?'<button data-a="backchat" aria-label="Volver a conversaciones">‹</button>':'<button data-a="backcalendar" aria-label="Volver al calendario">‹</button>')+avatarHTML+'<span class="grow"><strong>'+esc(isAdmin?u.name:'Administración')+'</strong><small>Automotriz Medina SV</small></span><button type="button" class="atm-refresh-trigger" data-a="atm-manual-refresh" aria-label="Actualizar aplicación" title="Actualizar">↻</button><button data-a="openlogs" title="Bitácoras" aria-label="Bitácoras">▤</button><button data-a="chatmenu" title="Opciones">⋮</button></div>'+
  '<div class="messages" id="messages"><div class="pill" style="align-self:center;background:white">'+(isAdmin?'MENSAJES E INSTRUCCIONES':'AVISOS DE ADMINISTRACIÓN Y REPORTES')+'</div>'+html+(ms.length?'':'<p class="sub" style="text-align:center;margin:auto">Sin avisos todavía.</p>')+'</div>'+
  (chatContext?'<div class="contextwrap"><div class="tagcontext">'+esc(chatContext.replyTo?'Respuesta autorizada':chatContext.category)+(chatContext.vehicle?' · '+esc(chatContext.vehicle):'')+'</div><button data-a="clearctx" aria-label="Cancelar redacción">×</button></div>':'')+
  (isAdmin?'<label class="allow-reply"><input type="checkbox" id="allowReply" '+(adminAllowReply?'checked':'')+'> Permitir que el empleado responda este mensaje</label>':'')+
@@ -1093,6 +1103,7 @@ function modalHTML(){if(!dialog)return '';let h='',sheet=false;
 const footer='<button class="btn ghost" data-a="close">Cancelar</button>';
 if(dialog.type==='accountmenu'){
  h='<div class="row"><h3>Opciones del taller</h3><button class="btn ghost" data-a="close" aria-label="Cerrar menú">×</button></div>'+
+ '<button type="button" class="opt" data-a="atm-manual-refresh"><span class="ico">↻</span><span><strong>Actualizar</strong><small>Cargar la última versión de ATM Manager</small></span></button>'+
  '<button class="opt" data-a="atm-push-enable"><span class="ico">🔔</span><span><strong>Activar notificaciones</strong><small>Registrar este teléfono para recibir avisos de chat</small></span></button>'+
  '<button class="opt" data-a="atm-push-test"><span class="ico">📳</span><span><strong>Probar notificaciones</strong><small>Enviar una prueba solamente a tus dispositivos</small></span></button>'+
  '<button class="opt" data-a="gotonotices"><span class="ico">▤</span><span><strong>Notificaciones</strong></span></button>'+
@@ -1114,6 +1125,11 @@ else if(dialog.type==='atm-denied-notices'){
  (records.length>30?'<p class="sub">Se muestran 30 avisos; el respaldo contiene todos.</p>':'')+
  '<button type="button" class="btn" data-a="atm-denied-export">Descargar respaldo (.json)</button>')+
  '<button type="button" class="btn ghost" data-a="close">Cerrar</button>';
+}
+else if(dialog.type==='atm-refresh-blocked'){
+ h='<h3>Actualización pendiente</h3><div class="notice">'+esc(dialog.reason||'Hay cambios sin guardar.')+'</div>'+
+  '<div class="row"><button class="btn ghost" type="button" data-a="close">Volver</button>'+
+  (dialog.retry?'<button class="btn" type="button" data-a="atm-refresh-retry">Reintentar sincronización</button>':'')+'</div>';
 }
 else if(dialog.type==='heldcopies'){
  if(me?.role!=='admin')return '';
@@ -1461,11 +1477,62 @@ if(highlightWork&&tab==='calendar'){
  if(work){work.classList.add('atm-push-target');main.scrollTop+=work.getBoundingClientRect().top-main.getBoundingClientRect().top-100;}
  highlightWork=null;
 }}
-function render(keepMainScroll=false){root.classList.toggle('is-admin',me?.role==='admin');head.innerHTML='<button type="button" class="mark" data-a="atm-account-menu" aria-label="Abrir menú del taller" title="Opciones del taller">'+logoIMG()+'</button><div class="grow"><strong>ATM Manager</strong><small>AUTOMOTRIZ MEDINA SV</small></div>'+(me?.role==='admin'?'<button data-a="openlogs" class="header-logicon'+(tab==='logs'?' on':'')+'" aria-label="Bitácoras del día" title="Bitácoras"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7a3 3 0 0 1 3 3v14H7a3 3 0 0 0-3-3V4Zm16 0h-6a3 3 0 0 0-3 3v14h6a3 3 0 0 1 3-3V4Z"/></svg></button>':'');
+function render(keepMainScroll=false){root.classList.toggle('is-admin',me?.role==='admin');head.innerHTML='<button type="button" class="mark" data-a="atm-account-menu" aria-label="Abrir menú del taller" title="Opciones del taller">'+logoIMG()+'</button><div class="grow"><strong>ATM Manager</strong><small>AUTOMOTRIZ MEDINA SV</small></div>'+
+ (me?'<button type="button" class="atm-refresh-trigger" data-a="atm-manual-refresh" aria-label="Actualizar aplicación" title="Actualizar">↻</button>':'')+
+ (me?.role==='admin'?'<button data-a="openlogs" class="header-logicon'+(tab==='logs'?' on':'')+'" aria-label="Bitácoras del día" title="Bitácoras"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7a3 3 0 0 1 3 3v14H7a3 3 0 0 0-3-3V4Zm16 0h-6a3 3 0 0 0-3 3v14h6a3 3 0 0 1 3-3V4Z"/></svg></button>':'');
 if(!me||(tab==='chat'&&(me?.role!=='admin'||thread))){nav.style.display='none'}else{const tabs=me.role==='admin'?[['calendar','Calendario','▦'],['tasks','Tareas','☑'],['chat','Chat','▤']]:[['calendar','Calendario','▦'],['records','Registros','📋'],['chat','IA Chat','▤']];nav.style.display='grid';nav.style.gridTemplateColumns=`repeat(${tabs.length},1fr)`;nav.innerHTML=tabs.map(([k,t,icon])=>'<button data-tab="'+k+'" class="'+(k===tab||(k==='records'&&tab==='logs'&&me?.role!=='admin')?'active':'')+'"><span class="symbol">'+icon+'</span>'+t+(k==='chat'&&totalUnread()?'<span class="nav-unread">'+totalUnread()+'</span>':k==='calendar'&&unreadCalendar().length?'<span class="nav-unread">'+unreadCalendar().length+'</span>':'')+'</button>').join('')}
 drawMain(keepMainScroll);overlay.innerHTML=modalHTML();
 if(tab==='chat'&&!cloud.retryPaused){const status=root.querySelector('#atm-cloud-status');if(status&&['Sincronizando…','Guardado en Supabase'].includes(status.textContent))status.style.display='none';}
 if(!suppressHistory){saveDemo();syncHistory()}}
+let atmManualRefreshInProgress=false;
+/* Actualizar desde GitHub Pages sin descartar tareas, mensajes o borradores. */
+function atmManualRefreshRisk(){
+ if(atmSessionBooting||cloud.busy||cloud.loading||cloud.skip||cloud.sessionRestoring||cloud.expiring||!cloud.ready)
+  return {reason:'La aplicación todavía está cargando o sincronizando. Intentá cuando termine.',retry:false};
+ if(dialog&&dialog.type!=='accountmenu')
+  return {reason:'Cerrá primero la ventana de edición para no perder su contenido.',retry:false};
+ if(ctx||draft.trim()||main.querySelector('#draft')?.value?.trim()||atmClock||
+    pending||drag||atmWeekSwipe||atmWeekFinishTimer)
+  return {reason:'Hay una redacción o actividad sin terminar. Guardala o cancelala antes de actualizar.',retry:false};
+ const waiting=atmReadOutbox(me.uuid).length;
+ if(waiting||draftSignature()!==cloud.revision)
+  return {reason:'Tenés '+waiting+' aviso(s) pendiente(s) u otros cambios sin confirmar. No se recargó la aplicación para protegerlos.',retry:true};
+ return null;
+}
+async function atmManualRefresh(){
+ if(!me||atmManualRefreshInProgress)return;
+ if(navigator.onLine===false){notify('No hay conexión. La aplicación no se recargó.');return;}
+ const risk=atmManualRefreshRisk();
+ if(risk){showDialog({type:'atm-refresh-blocked',...risk});return;}
+ atmManualRefreshInProgress=true;
+ busyStatus('Buscando actualización…');
+ const buttons=[...root.querySelectorAll('[data-a="atm-manual-refresh"]')];
+ buttons.forEach(b=>b.disabled=true);
+ try{
+  const url=new URL('./index.html',location.href);
+  url.searchParams.set('atm_actualizacion','manual-'+Date.now().toString(36));
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),12000);
+  let response;
+  try{response=await fetch(url.href,{cache:'no-store',credentials:'same-origin',signal:controller.signal});}
+  finally{clearTimeout(timeout);}
+  if(!response.ok)throw new Error('Error al consultar la versión publicada.');
+  const html=await response.text();
+  if(html.length<20000||!html.includes('ATM Manager')||!html.includes('atm-version-guard'))
+   throw new Error('No se pudo verificar la actualización descargada.');
+  const changedRisk=atmManualRefreshRisk();
+  if(changedRisk){showDialog({type:'atm-refresh-blocked',...changedRisk});return;}
+  // URL nueva, sin borrar caché, sesión, cola de avisos ni otros datos del teléfono.
+  location.replace(url.href);
+ }catch(e){
+  console.warn('Actualización manual pendiente:',e);
+  notify('No se pudo actualizar. Revisá la conexión y reintentá.');
+ }finally{
+  atmManualRefreshInProgress=false;
+  buttons.forEach(b=>{if(b.isConnected)b.disabled=false;});
+  busyStatus('');
+ }
+}
 function send(fromLogEditor=false){
  const text=draft.trim();if(!text||!me)return;
  if(ctx?.category==='Registrar bitácora'&&(!fromLogEditor||me.role==='admin'||!ctx.vehicle||!ctx.workDay))return;
@@ -2293,7 +2360,22 @@ if(a==='atm-log-editor-draft'&&dialog?.type==='logeditor'&&me?.role!=='admin'&&c
  if(ctx.jobId!=null)drafts[me.id+':'+ctx.jobId]=draft;
  ctx=null;draft='';closeDialog();render();notify('Borrador de bitácora guardado');return;
 }
-if(a==='close'){if(dialog?.type==='logeditor'){ctx=null;draft='';closeDialog();render()}else closeDialog();return}if(a==='atm-account-menu'){if(me)showDialog({type:'accountmenu'});return}if(a==='backcalendar'){tab='calendar';thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='logout'){logout();return}if(a==='openusers'){tab='users';employee=null;thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='openlogs'){logDay=(tab==='calendar'?day:logDay);logWeek=logDay;logEmployee='all';logCategory='Registrar bitácora';tab='logs';thread=null;employee=null;ctx=null;draft='';closeDialog();render();return}if(a==='logsdate'){logDay=day;logWeek=day;logEmployee='all';logCategory='Registrar bitácora';tab='logs';closeDialog();render();return}if(a==='progressdate'&&me?.role==='admin'){logDay=day;logWeek=day;logEmployee='all';logCategory='Informar avance';tab='logs';closeDialog();render();return}if(a==='employee-logs'&&me?.role==='admin'&&typeof employee==='number'){logDay=day;logWeek=day;logEmployee=String(employee);logCategory='Registrar bitácora';tab='logs';employee=null;closeDialog();render();return}if(a==='logview'&&reportKinds.some(x=>x.cat===b.dataset.cat)){logCategory=b.dataset.cat;logSelected.clear();logSelectMode=false;logHoldDay=null;render();return}if(a==='logprev'||a==='lognext'){logDay=dayAdd(logDay,a==='logprev'?-7:7);logWeek=logDay;render();return}if(a==='logdate'){logDay=b.dataset.day;logWeek=logDay;render();return}if(a==='openlog'){const entry=logs.find(x=>x.id===Number(b.dataset.id));if(entry&&(me.role==='admin'||entry.employeeId===me.id))showDialog({type:'logdetail',id:entry.id,uuid:entry.uuid});return}
+if(a==='close'){if(dialog?.type==='logeditor'){ctx=null;draft='';closeDialog();render()}else closeDialog();return}if(a==='atm-manual-refresh'&&me){atmManualRefresh();return}
+if(a==='atm-refresh-retry'&&me&&dialog?.type==='atm-refresh-blocked'){
+ closeDialog();
+ if(!cloud.ready||cloud.busy||cloud.loading){notify('Sincronización en curso.');return;}
+ atmRetryPendingAndSync().then(()=>{
+  if(!me)return;
+  const risk=atmManualRefreshRisk();
+  if(risk)showDialog({type:'atm-refresh-blocked',...risk});
+  else atmManualRefresh();
+ }).catch(e=>{
+  console.warn('Sincronización antes de actualización pendiente:',e);
+  notify('No se pudo sincronizar; los cambios siguen pendientes.');
+ });
+ return;
+}
+if(a==='atm-account-menu'){if(me)showDialog({type:'accountmenu'});return}if(a==='backcalendar'){tab='calendar';thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='logout'){logout();return}if(a==='openusers'){tab='users';employee=null;thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='openlogs'){logDay=(tab==='calendar'?day:logDay);logWeek=logDay;logEmployee='all';logCategory='Registrar bitácora';tab='logs';thread=null;employee=null;ctx=null;draft='';closeDialog();render();return}if(a==='logsdate'){logDay=day;logWeek=day;logEmployee='all';logCategory='Registrar bitácora';tab='logs';closeDialog();render();return}if(a==='progressdate'&&me?.role==='admin'){logDay=day;logWeek=day;logEmployee='all';logCategory='Informar avance';tab='logs';closeDialog();render();return}if(a==='employee-logs'&&me?.role==='admin'&&typeof employee==='number'){logDay=day;logWeek=day;logEmployee=String(employee);logCategory='Registrar bitácora';tab='logs';employee=null;closeDialog();render();return}if(a==='logview'&&reportKinds.some(x=>x.cat===b.dataset.cat)){logCategory=b.dataset.cat;logSelected.clear();logSelectMode=false;logHoldDay=null;render();return}if(a==='logprev'||a==='lognext'){logDay=dayAdd(logDay,a==='logprev'?-7:7);logWeek=logDay;render();return}if(a==='logdate'){logDay=b.dataset.day;logWeek=logDay;render();return}if(a==='openlog'){const entry=logs.find(x=>x.id===Number(b.dataset.id));if(entry&&(me.role==='admin'||entry.employeeId===me.id))showDialog({type:'logdetail',id:entry.id,uuid:entry.uuid});return}
 if(a==='atm-edit-own-log'&&dialog?.type==='logdetail'){
  const l=logs.find(x=>x.uuid===b.dataset.uuid);
  if(atmCanEmployeeEditLog(l))showDialog({type:'atm-employee-log-editor',uuid:l.uuid,originalText:l.text,draftText:l.text,error:'',saving:false});
