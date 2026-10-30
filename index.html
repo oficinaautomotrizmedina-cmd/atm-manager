@@ -504,7 +504,8 @@ function atmMarkActiveWork(dayKey,workId){
    Inserción única, sin otro registro técnico ni push; solo se pinta tras respuesta del servidor. */
 async function atmAdminSelectActiveWork(owner,date,focus){
  if(me?.role!=='admin'||!cloud.ready||!cloud.sb||cloud.busy||cloud.loading||
-    cloud.retryPaused||cloud.expiring||date!==atmActualToday()||
+    cloud.retryPaused||cloud.expiring||typeof date!=='string'||
+    !/^\d{4}-\d{2}-\d{2}$/.test(date)||
     !staff().some(u=>u.id===Number(owner))||!uuidFor(owner))return false;
  const item=displaySchedule(owner,date).find(x=>atmFocusWorkId(x)===focus);
  if(!item){notify('La actividad ya no está disponible.');return false;}
@@ -667,7 +668,7 @@ function workWithLogsHTML(item,i,editable,draggable){
  const record=item.record,focus=atmFocusWorkId(item);
  const active=focus&&atmActiveWorkId(record.userId,record.day)===focus;
  const selectable=focus&&me?.role!=='admin'&&me?.id===record.userId;
- const adminSelectable=focus&&me?.role==='admin'&&editable&&record.day===atmActualToday()&&
+ const adminSelectable=focus&&me?.role==='admin'&&editable&&
   staff().some(u=>u.id===record.userId);
  const card=workHTML(item,i,editable,draggable);
  const numberedCard=adminSelectable?card.replace('<span class="numb">',
