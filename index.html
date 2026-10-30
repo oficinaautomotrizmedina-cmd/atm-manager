@@ -338,6 +338,8 @@
 /* Opciones de consulta y problema: filas breves que solo muestran el nombre. */
 #app .atm-chat-simple-vehicle{min-height:48px;padding:11px 14px;align-items:center}
 #app .atm-chat-simple-vehicle strong{font-size:14px}
+/* Menú Registros: solamente ícono y nombre, sin subtítulos. */
+#app .atm-record-compact{min-height:56px;padding:10px 14px;align-items:center}
 </style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script><link href="./manifest.webmanifest" rel="manifest"/><meta content="#0e604d" name="theme-color"/></head><body><div id="app"><div class="header" id="head"></div><div class="content" id="main"></div><div class="nav" id="nav"></div><div id="overlay"></div><div class="floattrash" id="trash">🗑</div><div class="toast" id="toast"></div></div>
 <script>
 (()=>{
@@ -760,15 +762,15 @@ const reportMode=()=>reportKinds.find(x=>x.cat===logCategory)||reportKinds[0];
 /* Registros técnicos: entrada independiente de IA Chat para empleados. */
 function atmRecordsHTML(){
  if(!me||me.role==='admin')return '';
- const choice=(action,icon,title,sub)=>'<button type="button" class="opt" data-a="'+action+'">'+
-  '<span class="ico">'+icon+'</span><span class="grow"><strong>'+title+'</strong><small>'+sub+'</small></span>›</button>';
+ const choice=(action,icon,title)=>'<button type="button" class="opt atm-record-compact" data-a="'+action+'">'+
+  '<span class="ico">'+icon+'</span><span class="grow"><strong>'+title+'</strong></span>›</button>';
  return '<div class="page">'+heading('Registros','ACTIVIDAD TÉCNICA')+
   '<div class="section-title">NUEVO REGISTRO</div>'+
-  choice('atm-record-new-bitacora','📖','Registrar bitácora','Trabajos realizados en el vehículo')+
-  choice('atm-record-new-followup','📝','Agregar seguimiento','Registrar avances de cualquier vehículo, incluso uno nuevo')+
+  choice('atm-record-new-bitacora','📖','Registrar bitácora')+
+  choice('atm-record-new-followup','📝','Agregar seguimiento')+
   '<div class="section-title" style="margin-top:18px">CONSULTAR REGISTROS</div>'+
-  choice('atm-record-view-bitacoras','📚','Ver bitácoras','Historial ordenado por fecha')+
-  choice('atm-record-view-followups','🗂','Ver seguimientos','Historial ordenado por fecha')+
+  choice('atm-record-view-bitacoras','📚','Ver bitácoras')+
+  choice('atm-record-view-followups','🗂','Ver seguimientos')+
   '</div>';
 }
 function logsHTML(){
