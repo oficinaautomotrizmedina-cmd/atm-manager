@@ -1141,15 +1141,15 @@ else if(dialog.type==='atm-followup-choice'){
  const date=dialog.day,items=me?.role==='admin'||date!==atmActualToday()?[]:displaySchedule(me.id,date);
  const old=items.find(x=>atmFocusWorkId(x)===dialog.previousId),
        selected=items.find(x=>atmFocusWorkId(x)===dialog.currentId);
- const option=(item,label)=>{
+ const option=(item,title)=>{
   if(!item)return '';
   const id=atmFocusWorkId(item),num=items.indexOf(item)+1;
   return '<button type="button" class="opt" data-a="atm-followup-pick" data-focus="'+esc(id)+'"><span class="ico">'+num+'</span>'+
-   '<span class="grow"><strong>'+esc(atmFocusVehicleName(item))+'</strong><small>'+label+'</small></span>›</button>';
+   '<span class="grow"><strong>'+esc(title)+'</strong></span>›</button>';
  };
- h='<div class="row"><h3>Registrar seguimiento</h3><button class="btn ghost" data-a="close">×</button></div>'+
+ h='<div class="row"><h3>'+esc(old?atmFocusVehicleName(old):'Registrar seguimiento')+'</h3><button class="btn ghost" data-a="close">×</button></div>'+
   '<p class="sub">¿Para cuál vehículo querés guardar el seguimiento?</p>'+
-  option(old,'Vehículo anterior')+option(selected,'Vehículo actual · seleccionado en azul')+
+  option(old,atmFocusVehicleName(old))+option(selected,'Vehículo actual')+
   '<button type="button" class="btn ghost" data-a="atm-followup-skip" style="width:100%">No registrar seguimiento</button>';
 }
 else if(dialog.type==='atm-followup-editor'){
