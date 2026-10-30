@@ -282,7 +282,11 @@
  #app .content .atm-task-drag-handle:active{cursor:grabbing;background:#d5ebdd}
  #app .content .atm-task-add-cta{position:sticky;top:0;z-index:4;width:100%;min-height:46px;box-shadow:0 3px 12px #052a161d}
 
-#app .nav{flex:0 0 auto;position:relative;z-index:3;padding-bottom:max(5px,env(safe-area-inset-bottom));width:100%;margin-top:auto}
+/* Barra inferior: compacta en el navegador; reservar área segura solo en PWA a pantalla completa. */
+#app .nav{flex:0 0 auto;position:relative;z-index:3;padding:4px 5px 6px;width:100%;margin-top:auto;align-content:center}
+@media (display-mode:standalone),(display-mode:fullscreen){
+ #app .nav{padding-bottom:max(6px,env(safe-area-inset-bottom))}
+}
 #app .header{flex-shrink:0}
 #app .header button.mark{width:44px;height:44px;min-width:44px;padding:2px;border:1px solid #ffffff40;border-radius:12px;display:grid;place-items:center;background:#ffffff14;overflow:hidden}
 #app .header button.mark:focus-visible,.chathead .chat-account-logo:focus-visible{outline:2px solid #daffeb;outline-offset:2px}
