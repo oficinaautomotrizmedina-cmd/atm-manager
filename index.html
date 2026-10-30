@@ -778,6 +778,10 @@ function calendarNewsHTML(){
  (list.length>6?'<small class="sub">Abrí los avisos para ver los '+(list.length-6)+' siguientes.</small>':'')+'</section>';
 }
 const noteFor=(kind,id)=>messages.filter(x=>x.category==='Indicación del administrador'&&x.taskType===kind&&Number(x.taskId)===Number(id)).slice(-1)[0];
+/* Una respuesta pendiente no debe bloquear su propio reintento. No crear un duplicado. */
+const atmPendingReplyTo=(m)=>me&&me.role!=='admin'&&m?
+ messages.find(x=>x.sender===me.id&&x.employeeId===me.id&&
+ x.replyTo===m.id&&!!x.uuid&&!cloud.lastNotice.has(x.uuid)):null;
 const canReplyTo=(m)=>!!(me&&me.role!=='admin'&&m&&m.employeeId===me.id&&m.sender!==me.id&&m.allowReply&&!messages.some(x=>x.sender===me.id&&x.replyTo===m.id));
 function noteInCalendar(kind,id){if(!me||me.role==='admin')return '';const n=noteFor(kind,id);if(n&&n.employeeId!==me.id)return '';return n?'<span class="task-admin-note"><b>📣 Indicaciones de Grok</b><span>'+esc(n.text.length>125?n.text.slice(0,125)+'…':n.text)+'</span>'+(canReplyTo(n)?'<em>Podés responder desde IA Chat</em>':'')+'</span>':''}
 
@@ -951,7 +955,8 @@ function chatHTML(){
    (m.replyTo?'<span class="small">↳ Respuesta a instrucción</span>':'')+
    esc(m.text)+
    (m.allowReply&&mine?'<div class="reply-hint">Respuesta '+(messages.some(x=>x.replyTo===m.id)?'recibida':'habilitada')+'</div>':'')+
-   (canReplyTo(m)?'<button class="reply-action" data-a="replyinstruction" data-id="'+m.id+'">↩ Responder a esta instrucción</button>':'')+
+   (canReplyTo(m)?'<button class="reply-action" data-a="replyinstruction" data-id="'+m.id+'">↩ Responder a esta instrucción</button>':
+   atmPendingReplyTo(m)?'<button class="reply-action" data-a="atm-retry-chat-reply" data-id="'+m.id+'">↻ Reintentar respuesta pendiente</button>':'')+
    (m.allowReply&&!mine&&wasAnswered?'<div class="reply-hint">✓ Respuesta enviada</div>':'')+
    '<div class="atm-msg-meta"><span class="time">'+esc(logClock(m.ts))+'</span>'+
    (mine?'<span class="atm-msg-checks'+(m.uuid&&cloud.lastNotice.has(m.uuid)?' confirmed':'')+'" role="img" aria-label="'+(m.uuid&&cloud.lastNotice.has(m.uuid)?'Guardado en el sistema':'Pendiente de envío')+'" title="'+(m.uuid&&cloud.lastNotice.has(m.uuid)?'Guardado en el sistema; no indica lectura':'Pendiente de confirmación del servidor')+'">'+(m.uuid&&cloud.lastNotice.has(m.uuid)?'✓✓':'✓')+'</span>':'')+'</div></div>';
@@ -1450,7 +1455,20 @@ function send(fromLogEditor=false){
  const isAdmin=me.role==='admin',empId=isAdmin?thread:me.id;
  if(!empId)return;
  if(!isAdmin&&!ctx){notify('Elegí una categoría o una respuesta autorizada');return}
- if(!isAdmin&&ctx?.replyTo){const original=messages.find(m=>m.id===ctx.replyTo);if(!canReplyTo(original)){ctx=null;draft='';render();notify('La respuesta ya fue utilizada');return}}
+ if(!isAdmin&&ctx?.replyTo){
+  const original=messages.find(m=>m.id===ctx.replyTo);
+  if(!original||!original.uuid){
+   notify('No se encontró el mensaje original. El texto sigue disponible para copiar.');return;
+  }
+  if(!cloud.lastNotice.has(original.uuid)){
+   notify('La instrucción original aún no está confirmada. Intentá nuevamente.');return;
+  }
+  if(!canReplyTo(original)){
+   notify(atmPendingReplyTo(original)?'Ya existe una respuesta pendiente. Reintentá desde el mensaje original.':
+    'La instrucción ya tiene una respuesta enviada.');
+   return;
+  }
+ }
  const car=ctx?.vehicle||null,category=isAdmin?null:ctx?.replyTo?'Respuesta a instrucción':ctx?.category||null,sentAt=Date.now();
  const entry={uuid:crypto.randomUUID(),id:nextMsg++,employeeId:empId,sender:me.id,category,vehicle:car,text,ts:sentAt,allowReply:isAdmin?adminAllowReply:false,replyTo:ctx?.replyTo||null,taskType:ctx?.taskType||null,taskId:ctx?.taskId||null,workDay:ctx?.workDay||null,taskDetail:ctx?.taskDetail||'',priority:ctx?.priority||null};
  messages.push(entry);
@@ -2293,6 +2311,19 @@ if(a==='atm-chat-delete-ask'&&dialog?.type==='atm-chat-message-actions'&&me?.rol
 if(a==='atm-chat-delete-confirm'&&dialog?.type==='atm-chat-message-delete'&&me?.role==='admin'){
  atmDeleteAdminChatMessage();return;
 }
+if(a==='atm-retry-chat-reply'&&me?.role!=='admin'&&tab==='chat'){
+ const original=messages.find(x=>x.id===Number(b.dataset.id));
+ const unsent=atmPendingReplyTo(original);
+ if(!unsent)return;
+ if(!cloud.ready){notify('La conexión al servidor no está disponible. Tu respuesta sigue pendiente.');return;}
+ atmRememberPending();atmRetryPendingAndSync().then(()=>{
+  if(!me)return;
+  notify(cloud.lastNotice.has(unsent.uuid)?'Respuesta enviada correctamente':
+   'La respuesta sigue pendiente. Revisá el aviso de sincronización.');
+  render(true);
+ }).catch(e=>{console.warn('Reintento de respuesta pendiente:',e);notify('La respuesta continúa pendiente.');});
+ return;
+}
 if(a==='replyinstruction'){const m=messages.find(x=>x.id===Number(b.dataset.id));if(canReplyTo(m)){ctx={category:'Respuesta a instrucción',replyTo:m.id,vehicle:m.vehicle||null,taskType:m.taskType||null,taskId:m.taskId||null};draft='';render();setTimeout(()=>main.querySelector('#draft')?.focus(),0)}return}if(a==='notebooking'||a==='notejob'){if(me?.role!=='admin')return;showDialog({type:'adminnote',taskType:a==='notebooking'?'booking':'job',taskId:Number(b.dataset.id)});return}if(a==='backchat'){thread=null;render();return}if(a==='atm-followup-skip'&&dialog?.type==='atm-followup-choice'&&me?.role!=='admin'){
  closeDialog();return;
 }
@@ -2899,8 +2930,12 @@ async function cloudWrite(){
    }catch(_){}
   }
   cloud.retryPaused=true;
-  busyStatus('Error al sincronizar. Tocá aquí para reintentar.');
-  notify('El aviso todavía no se guardó. Revisá la conexión.');
+  const code=String(e?.code||e?.status||'sin código').slice(0,24);
+  const detail=code==='42501'||Number(e?.status)===403?
+   'Permiso denegado por el servidor':code==='23503'?'Mensaje original no disponible':
+   'No se pudo sincronizar';
+  busyStatus(detail+' · Error '+code+' · Tocá para reintentar');
+  notify(detail+'. El mensaje continúa pendiente, no lo enviés dos veces.');
  }finally{cloud.busy=false;}
 }
 async function atmRetryPendingAndSync(){
