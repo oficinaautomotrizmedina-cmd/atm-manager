@@ -703,7 +703,7 @@ function atmRecordsHTML(){
 }
 function logsHTML(){
  const own=me?.role!=='admin';if(own)logEmployee='all';
- const mode=reportMode(),entries=relevantLogs(logDay,logEmployee,mode.cat),
+ const chosen=reportMode(),mode=own&&chosen.cat==='Informar avance'?{...chosen,title:'Seguimientos',own:'Mis seguimientos',label:'seguimientos'}:chosen,entries=relevantLogs(logDay,logEmployee,mode.cat),
  daily=relevantLogs(logDay,logEmployee,mode.cat),members=own?[me]:staff();
  return '<div class="page">'+(own?'<button type="button" class="btn ghost" data-a="atm-back-records" style="align-self:flex-start">‹ Volver a Registros</button>':'')+heading(own?mode.own:mode.title,'')+
  '<div class="atm-report-tabs" role="group" aria-label="Tipo de registros">'+
