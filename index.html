@@ -331,6 +331,13 @@
 #app .chathead{flex-shrink:0}
 #app .messages{min-height:0;flex:1 1 auto}
 
+/* Edición de mensajes en IA Chat: selección accesible, sin cambiar el envío. */
+#app .bubble[data-a="atm-chat-select"]{cursor:pointer;outline-offset:2px}
+#app .bubble.atm-chat-selected{outline:2px solid #0b7959;background:#d7f1e3}
+#app .atm-chat-selection-toolbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;background:#eef7f0;border-bottom:1px solid #c3ddcc;padding:8px 10px;font-size:12px;color:#174d36;font-weight:750}
+#app .atm-chat-selection-toolbar span{flex:1;min-width:100px}
+#app .atm-chat-selection-toolbar button{border:1px solid #afd3be;border-radius:9px;background:white;color:#08674e;font-weight:800;font-size:12px;padding:8px 11px}
+#app .atm-chat-selection-toolbar button[data-a="atm-chat-edit-selected"]{background:#0e7053;color:#fff;border-color:#0e7053}
 </style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script><link href="./manifest.webmanifest" rel="manifest"/><meta content="#0e604d" name="theme-color"/></head><body><div id="app"><div class="header" id="head"></div><div class="content" id="main"></div><div class="nav" id="nav"></div><div id="overlay"></div><div class="floattrash" id="trash">🗑</div><div class="toast" id="toast"></div></div>
 <script>
 (()=>{
@@ -632,6 +639,7 @@ function pendingPanel(d,adminCanEdit=false){const arr=pendingBookings(d);if(!arr
 }
 
 let atmSessionBooting=true;
+let atmChatSelectedUuid=null;
 let me=null,tab='calendar',employee=null,thread=null,day=BASE,week=BASE,filter='all',logDay=BASE,logWeek=BASE,logEmployee='all',logCategory='Registrar bitácora',logSelectMode=false,logSelected=new Set(),logHoldDay=null,logHoldTimer=null,logIgnoreDayClickUntil=0,monthCursor=BASE,dialog=null,ctx=null,draft='',adminAllowReply=false,error='',seen={},readBy={},drag=null,pending=null,toastTimer=null,blockedClick=0;
 function saveDemo(){cloudChange();}
 function restoreDemo(){}
@@ -699,7 +707,7 @@ const noteFor=(kind,id)=>messages.filter(x=>x.category==='Indicación del admini
 const canReplyTo=(m)=>!!(me&&me.role!=='admin'&&m&&m.employeeId===me.id&&m.sender!==me.id&&m.allowReply&&!messages.some(x=>x.sender===me.id&&x.replyTo===m.id));
 function noteInCalendar(kind,id){if(!me||me.role==='admin')return '';const n=noteFor(kind,id);if(n&&n.employeeId!==me.id)return '';return n?'<span class="task-admin-note"><b>📣 Indicaciones de Grok</b><span>'+esc(n.text.length>125?n.text.slice(0,125)+'…':n.text)+'</span>'+(canReplyTo(n)?'<em>Podés responder desde IA Chat</em>':'')+'</span>':''}
 
-const opts=[['Informar avance','Seleccionar vehículo e informar el avance','📝',true],['Consultas y solicitudes','Repuestos, autorizaciones y consultas','❔',false],['Registrar bitácora','Seleccionar vehículo y registrar trabajo','📖',true],['Reportar problema','Seleccionar vehículo y describir el problema','⚠',true],['Asuntos administrativos','Sugerencias y asuntos internos','🏢',false]];
+const opts=[['Informar avance','Seleccionar vehículo e informar el avance','📝',true],['Consultas y solicitudes','Elegir vehículo o consulta independiente','❔',true],['Registrar bitácora','Seleccionar vehículo y registrar trabajo','📖',true],['Reportar problema','Seleccionar vehículo y describir el problema','⚠',true],['Asuntos administrativos','Sugerencias y asuntos internos','🏢',false]];
 const logCategoryLabels={'Registrar bitácora':'Bitácora','Informar avance':'Avance','Reportar problema':'Problema'};
 const logKindClass={'Registrar bitácora':'','Informar avance':'progress','Reportar problema':'problem'};
 const logClock=ts=>new Date(ts).toLocaleTimeString('es-SV',{timeZone:'America/El_Salvador',hour:'numeric',minute:'2-digit'});
@@ -845,15 +853,24 @@ function tasksHTML(){
 }
 
 function inboxHTML(){return '<div class="page">'+'<div class="row">'+heading('Avisos y mensajes','')+'<button class="btn ghost" data-a="allmenu" aria-label="Opciones de avisos">⋮</button></div><div class="stack">'+staff().map(u=>{const m=convo(u.id).slice(-1)[0],n=unreadCount(u.id);return '<button class="item chat-list-button" data-a="openchat" data-id="'+u.id+'"><span class="chat-name-chip">'+esc(u.name)+'</span><span class="details"><small class="chat-preview">'+esc(m?.text||'Sin avisos todavía')+'</small></span>'+(n?'<span class="unread-number">'+n+'</span>':'')+'<span class="chat-chevron">›</span></button>'}).join('')+'</div></div>'}
+function atmCanEmployeeEditChatMessage(m){
+ return !!me&&me.role!=='admin'&&!!m?.uuid&&m.sender===me.id&&m.employeeId===me.id&&
+  !m.copySourceNoticeId&&!['Registrar bitácora','Informar avance'].includes(m.category)&&
+  !atmIsFocusNotice(m)&&typeof m.text==='string';
+}
 function chatHTML(){
  const u=me.role==='admin'?user(thread):me;if(!u)return inboxHTML();
  const isAdmin=me.role==='admin',ms=convo(u.id);
+ if(atmChatSelectedUuid&&!ms.some(m=>m.uuid===atmChatSelectedUuid&&atmCanEmployeeEditChatMessage(m)))atmChatSelectedUuid=null;
  const avatarHTML=isAdmin?'<button class="chat-account-logo" data-a="atm-account-menu" aria-label="Opciones del taller">'+chatLogoIMG()+'</button><span class="avatar">'+esc(u.name.charAt(0))+'</span>':'<button class="avatar logoavatar chat-account-logo" data-a="atm-account-menu" aria-label="Opciones del taller">'+chatLogoIMG()+'</button>';
  const html=ms.map(m=>{
   const mine=m.sender===me.id,wasAnswered=messages.some(x=>x.sender===me.id&&x.replyTo===m.id);
   const fromGrok=users.some(u=>u.id===m.sender&&u.role==='admin');
   const displayCategory=fromGrok?(m.category==='Indicación del administrador'?'Indicaciones de Grok':'Grok'+(m.category&&m.category!=='Aviso general'?' · '+m.category:'')):m.category;
-  return '<div class="bubble '+(mine?'mine':'')+(m.category==='Indicación del administrador'?' instruction':'')+'" data-notice-uuid="'+esc(m.uuid||'')+'">'+
+  const editable=atmCanEmployeeEditChatMessage(m);
+  return '<div class="bubble '+(mine?'mine':'')+(m.category==='Indicación del administrador'?' instruction':'')+
+   (editable&&atmChatSelectedUuid===m.uuid?' atm-chat-selected':'')+'" data-notice-uuid="'+esc(m.uuid||'')+'"'+
+   (editable?' data-a="atm-chat-select" data-uuid="'+esc(m.uuid)+'" role="button" tabindex="0" aria-label="Seleccionar mensaje para editar"':'')+'>'+
    (displayCategory?'<span class="cat">'+esc(displayCategory)+'</span><div></div>':'')+
    (m.vehicle?'<span class="small">🚘 '+esc(m.vehicle)+'</span>':'')+
    (m.replyTo?'<span class="small">↳ Respuesta a instrucción</span>':'')+
@@ -867,6 +884,7 @@ function chatHTML(){
  const chatContext=ctx?.category==='Registrar bitácora'?null:ctx;
  const placeholder=isAdmin?'Escribí un aviso o instrucción...':chatContext?.replyTo?'Escribí tu respuesta...':chatContext?.category?'Escribí el reporte...':'Elegí una categoría con + para escribir';
  return '<div class="chatframe"><div class="chathead">'+(isAdmin?'<button data-a="backchat" aria-label="Volver a conversaciones">‹</button>':'<button data-a="backcalendar" aria-label="Volver al calendario">‹</button>')+avatarHTML+'<span class="grow"><strong>'+esc(isAdmin?u.name:'Administración')+'</strong><small>Automotriz Medina SV</small></span><button data-a="openlogs" title="Bitácoras" aria-label="Bitácoras">▤</button><button data-a="chatmenu" title="Opciones">⋮</button></div>'+
+ (atmChatSelectedUuid?'<div class="atm-chat-selection-toolbar"><span>Mensaje seleccionado</span><button type="button" data-a="atm-chat-edit-selected">✎ Editar</button><button type="button" data-a="atm-chat-unselect">Cancelar</button></div>':'')+
  '<div class="messages" id="messages"><div class="pill" style="align-self:center;background:white">'+(isAdmin?'MENSAJES E INSTRUCCIONES':'AVISOS DE ADMINISTRACIÓN Y REPORTES')+'</div>'+html+(ms.length?'':'<p class="sub" style="text-align:center;margin:auto">Sin avisos todavía.</p>')+'</div>'+
  (chatContext?'<div class="contextwrap"><div class="tagcontext">'+esc(chatContext.replyTo?'Respuesta autorizada':chatContext.category)+(chatContext.vehicle?' · '+esc(chatContext.vehicle):'')+'</div><button data-a="clearctx" aria-label="Cancelar redacción">×</button></div>':'')+
  (isAdmin?'<label class="allow-reply"><input type="checkbox" id="allowReply" '+(adminAllowReply?'checked':'')+'> Permitir que el empleado responda este mensaje</label>':'')+
@@ -1140,13 +1158,14 @@ else if(dialog.type==='newjob'||dialog.type==='editjob'){
 }
 else if(dialog.type==='categories'){sheet=true;h='<div class="row"><h3>¿Qué querés comunicar?</h3><button class="btn ghost" data-a="close">×</button></div>'+opts.filter(o=>!['Registrar bitácora','Informar avance'].includes(o[0])).map(o=>'<button class="opt" data-a="category" data-cat="'+esc(o[0])+'"><span class="ico">'+o[2]+'</span><span class="grow"><strong>'+esc(o[0])+'</strong><small>'+esc(o[1])+'</small></span>›</button>').join('')}
 else if(dialog.type==='vehicles'){
- sheet=true;const dates=atmReportDates(),j=dates.flatMap(d=>list(me.id,d)),b=dates.flatMap(d=>bookedFor(me.id,d)),allowNew=['Registrar bitácora','Informar avance'].includes(dialog.category),standalone=allowNew?dates.flatMap(d=>standaloneLogs(me.id,d)):[];
- h='<div class="row"><h3>'+esc(dialog.category)+'</h3><button class="btn ghost" data-a="close">×</button></div><p class="sub">'+(allowNew?'Elegí un vehículo asignado o agregá uno nuevo para '+(dialog.category==='Informar avance'?'registrar su seguimiento.':'registrar su bitácora.'):'Elegí el vehículo que tenés asignado para hoy.')+'</p>'+
+ sheet=true;const dates=atmReportDates(),j=dates.flatMap(d=>list(me.id,d)),b=dates.flatMap(d=>bookedFor(me.id,d)),allowNew=['Registrar bitácora','Informar avance'].includes(dialog.category),allowIndependent=['Consultas y solicitudes','Reportar problema'].includes(dialog.category),standalone=allowNew?dates.flatMap(d=>standaloneLogs(me.id,d)):[];
+ h='<div class="row"><h3>'+esc(dialog.category)+'</h3><button class="btn ghost" data-a="close">×</button></div><p class="sub">'+(allowNew?'Elegí un vehículo asignado o agregá uno nuevo para '+(dialog.category==='Informar avance'?'registrar su seguimiento.':'registrar su bitácora.'):allowIndependent?'Elegí una tarea o vehículo, o escribí sin asociarlo a ninguno.':'Elegí el vehículo que tenés asignado para hoy.')+'</p>'+
  (b.length?'<div class="section-title">VEHÍCULOS AGENDADOS</div>'+b.map(x=>'<button class="opt" data-a="selectbooking" data-booking="'+x.id+'"><span class="ico">🚘</span><span class="grow"><strong>'+esc(x.vehicle)+'</strong><small>'+esc(x.instructions)+(dates.length>1?' · '+esc(fmt(x.day)):'')+'</small><span class="priority-label priority-'+esc(x.priority)+'" style="margin-top:6px">'+esc((PRIORITIES[x.priority]||PRIORITIES.yellow).name)+'</span></span>›</button>').join(''):'')+
  (j.length?'<div class="section-title">TAREAS CON VEHÍCULO</div>'+j.map(x=>'<button class="opt" data-a="selectcar" data-job="'+x.id+'"><span class="ico">🚗</span><span class="grow"><strong>'+esc(x.title)+'</strong><small>'+esc(x.detail)+(dates.length>1?' · '+esc(fmt(x.day)):'')+'</small></span>›</button>').join(''):'')+
  (standalone.length?'<div class="section-title">VEHÍCULOS REGISTRADOS</div>'+standalone.map(x=>'<button class="opt" data-a="select-standalone" data-vehicle="'+esc(x.record.vehicle)+'" data-day="'+esc(x.record.day)+'"><span class="ico">📖</span><span class="grow"><strong>'+esc(x.record.vehicle)+'</strong>'+(dates.length>1?'<small>'+esc(fmt(x.record.day))+'</small>':'')+'</span>›</button>').join(''):'')+
  (allowNew?'<button type="button" class="opt atm-log-new-vehicle" data-a="new-log-vehicle"><span class="ico">＋</span><span class="grow"><strong>Agregar vehículo</strong><small>Marca, modelo y año · '+(dialog.category==='Informar avance'?'registrar seguimiento':'registrar bitácora')+'</small></span>›</button>':'')+
- (!j.length&&!b.length&&!allowNew?'<div class="notice">No tenés vehículos asignados para hoy. El administrador puede agendarlos desde Calendario.</div>':'')+
+ (allowIndependent?'<button type="button" class="opt" data-a="atm-independent-chat"><span class="ico">💬</span><span class="grow"><strong>'+(dialog.category==='Reportar problema'?'Problema independiente':'Consulta independiente')+'</strong><small>Escribir libremente, sin relacionarlo con un vehículo</small></span>›</button>':'')+
+ (!j.length&&!b.length&&!allowNew&&!allowIndependent?'<div class="notice">No tenés vehículos asignados para hoy. El administrador puede agendarlos desde Calendario.</div>':'')+
  '<button class="btn ghost" data-a="backcategories">Volver</button>';
 }
 
@@ -1211,6 +1230,16 @@ else if(dialog.type==='logdelete'){
  '<div class="atm-cleanup-preview"><strong>'+count+' registro'+(count===1?'':'s')+' encontrado'+(count===1?'':'s')+'</strong><div class="sub">'+(d.mode==='day'?'Sin importar los filtros de pantalla, según tus permisos.':'Únicamente de la categoría y el técnico seleccionados.')+'</div></div>'+
  (count?'<label class="atm-log-delete-check"><input type="checkbox" id="atm-log-ack"> Comprendo que la eliminación es definitiva.</label><button type="button" class="btn red" data-a="atm-log-confirm-delete" disabled>🗑 Eliminar '+count+' registro'+(count===1?'':'s')+'</button>':'<p class="sub">Esta selección ya no contiene registros.</p>'))+
  '<button type="button" class="btn ghost" data-a="close">Cancelar</button>';
+}
+else if(dialog.type==='atm-chat-message-editor'){
+ const m=messages.find(x=>x.uuid===dialog.uuid),canEdit=atmCanEmployeeEditChatMessage(m);
+ h=canEdit?'<div class="row"><h3>Editar mensaje</h3><button type="button" class="btn ghost" data-a="close" aria-label="Cerrar sin guardar">×</button></div>'+
+  '<div class="sub">'+esc(m.category||'Mensaje')+(m.vehicle?' · 🚘 '+esc(m.vehicle):'')+'</div>'+
+  '<form class="stack" id="atm-chat-edit-form"><label class="field">Texto del mensaje<textarea id="atm-chat-edit-text" name="entry" rows="7" minlength="1" maxlength="8000" required'+(dialog.saving?' disabled':'')+'>'+esc(dialog.draftText??m.text)+'</textarea></label>'+
+  (dialog.error?'<div class="alert" role="alert">'+esc(dialog.error)+'</div>':'')+
+  '<div class="row"><button type="button" class="btn ghost" data-a="close"'+(dialog.saving?' disabled':'')+'>Cancelar</button>'+
+  '<button type="submit" class="btn"'+(dialog.saving?' disabled':'')+'>'+(dialog.saving?'Guardando…':'Guardar cambios')+'</button></div></form>':
+  '<div class="notice">Este mensaje no está disponible para edición.</div>'+footer;
 }
 else if(dialog.type==='logdetail'){
  const l=logs.find(x=>dialog.uuid&&x.uuid===dialog.uuid)||logs.find(x=>x.id===dialog.id),owner=l?user(l.employeeId):null,pr=l?(PRIORITIES[l.priority]||null):null;
@@ -1287,12 +1316,15 @@ window.addEventListener('popstate',e=>{
  if(!previous||stale){const current=snapshotState();history.pushState(current,'');lastHistoryJSON=JSON.stringify(current);}
 });
 
-function drawMain(keep=false){let scroll=keep?main.scrollTop:0;const isDetail=me&&tab==='chat'&&(me.role!=='admin'||thread);if(isDetail)markRead(me.role==='admin'?thread:me.id);
+function drawMain(keep=false){let scroll=keep?main.scrollTop:0;
+const lastChatScroll=keep?main.querySelector('#messages')?.scrollTop:null;
+const isDetail=me&&tab==='chat'&&(me.role!=='admin'||thread);if(isDetail)markRead(me.role==='admin'?thread:me.id);
 head.style.display=isDetail?'none':'flex';main.innerHTML=!me?(atmSessionBooting||cloud.sessionRestoring?atmRestoreViewHTML():loginHTML()):tab==='users'?usersHTML():tab==='logs'?logsHTML():tab==='records'?atmRecordsHTML():tab==='tasks'?tasksHTML():tab==='calendar'?calendarHTML():isDetail?chatHTML():inboxHTML();main.scrollTop=scroll;
 const msgs=main.querySelector('#messages');
 if(msgs){
  const notice=highlightNotice?[...msgs.querySelectorAll('[data-notice-uuid]')].find(el=>el.dataset.noticeUuid===highlightNotice):null;
  if(notice){notice.classList.add('atm-push-target');msgs.scrollTop+=notice.getBoundingClientRect().top-msgs.getBoundingClientRect().top-msgs.clientHeight/3;}
+ else if(keep&&lastChatScroll!=null)msgs.scrollTop=lastChatScroll;
  else msgs.scrollTop=msgs.scrollHeight;
  highlightNotice=null;
 }
@@ -1754,7 +1786,7 @@ function pointerEnd(e,success){
 }
 
 window.addEventListener('pointerup',e=>pointerEnd(e,true));window.addEventListener('pointercancel',e=>pointerEnd(e,false));
-root.addEventListener('input',e=>{if(e.target.id==='draft'||e.target.id==='atm-log-text')draft=e.target.value;else if(e.target.id==='atm-employee-log-edit-text'&&dialog?.type==='atm-employee-log-editor')dialog.draftText=e.target.value});root.addEventListener('change',e=>{if(e.target.id==='filter'){filter=e.target.value;render()}else if(e.target.id==='logperson'&&me?.role==='admin'){logSelected.clear();logHoldDay=null;logEmployee=e.target.value;render()}else if(e.target.id==='allowReply'){adminAllowReply=e.target.checked}else if(e.target.id==='serviceType'){const other=overlay.querySelector('#serviceOtherWrap');if(other)other.style.display=e.target.value==='Otro'?'flex':'none'}});
+root.addEventListener('input',e=>{if(e.target.id==='draft'||e.target.id==='atm-log-text')draft=e.target.value;else if(e.target.id==='atm-employee-log-edit-text'&&dialog?.type==='atm-employee-log-editor')dialog.draftText=e.target.value;else if(e.target.id==='atm-chat-edit-text'&&dialog?.type==='atm-chat-message-editor')dialog.draftText=e.target.value});root.addEventListener('change',e=>{if(e.target.id==='filter'){filter=e.target.value;render()}else if(e.target.id==='logperson'&&me?.role==='admin'){logSelected.clear();logHoldDay=null;logEmployee=e.target.value;render()}else if(e.target.id==='allowReply'){adminAllowReply=e.target.checked}else if(e.target.id==='serviceType'){const other=overlay.querySelector('#serviceOtherWrap');if(other)other.style.display=e.target.value==='Otro'?'flex':'none'}});
 
 root.addEventListener('click',e=>{
  const b=e.target.closest('[data-a="atm-cleanup-open"]');
@@ -2124,7 +2156,23 @@ if(a==='editbooking'){const ap=appointments.find(x=>x.id===Number(b.dataset.book
  if(me?.role!=='admin')return;
  atmOpenStandaloneEditor(b.dataset.logUuid);return;
 }
-if(a==='newjob'){showDialog({type:'newjob'});return}if(a==='editjob'){if(me?.role==='admin'&&jobs.some(x=>x.id===Number(b.dataset.job)))showDialog({type:'editjob',id:Number(b.dataset.job)});return}if(a==='prev'||a==='next'){day=dayAdd(day,a==='prev'?-7:7);week=day;render();return}if(a==='date'){day=b.dataset.day;week=day;render();return}if(a==='employee'){employee=Number(b.dataset.id);render();return}if(a==='pending'){employee='pending';filter='all';render();return}if(a==='backemployee'){employee=null;render();return}if(a==='openchat'){thread=Number(b.dataset.id);ctx=null;draft='';adminAllowReply=false;render();return}if(a==='gotonotices'){tab='chat';thread=null;ctx=null;draft='';render();return}if(a==='replyinstruction'){const m=messages.find(x=>x.id===Number(b.dataset.id));if(canReplyTo(m)){ctx={category:'Respuesta a instrucción',replyTo:m.id,vehicle:m.vehicle||null,taskType:m.taskType||null,taskId:m.taskId||null};draft='';render();setTimeout(()=>main.querySelector('#draft')?.focus(),0)}return}if(a==='notebooking'||a==='notejob'){if(me?.role!=='admin')return;showDialog({type:'adminnote',taskType:a==='notebooking'?'booking':'job',taskId:Number(b.dataset.id)});return}if(a==='backchat'){thread=null;render();return}if(a==='atm-followup-skip'&&dialog?.type==='atm-followup-choice'&&me?.role!=='admin'){
+if(a==='newjob'){showDialog({type:'newjob'});return}if(a==='editjob'){if(me?.role==='admin'&&jobs.some(x=>x.id===Number(b.dataset.job)))showDialog({type:'editjob',id:Number(b.dataset.job)});return}if(a==='prev'||a==='next'){day=dayAdd(day,a==='prev'?-7:7);week=day;render();return}if(a==='date'){day=b.dataset.day;week=day;render();return}if(a==='employee'){employee=Number(b.dataset.id);render();return}if(a==='pending'){employee='pending';filter='all';render();return}if(a==='backemployee'){employee=null;render();return}if(a==='openchat'){thread=Number(b.dataset.id);ctx=null;draft='';adminAllowReply=false;render();return}if(a==='gotonotices'){tab='chat';thread=null;ctx=null;draft='';render();return}if(a==='atm-chat-select'&&me?.role!=='admin'&&tab==='chat'){
+ const m=messages.find(x=>x.uuid===b.dataset.uuid);
+ if(atmCanEmployeeEditChatMessage(m)){
+  atmChatSelectedUuid=atmChatSelectedUuid===m.uuid?null:m.uuid;
+  render(true);
+ }return;
+}
+if(a==='atm-chat-unselect'&&me?.role!=='admin'){
+ atmChatSelectedUuid=null;render(true);return;
+}
+if(a==='atm-chat-edit-selected'&&me?.role!=='admin'){
+ const m=messages.find(x=>x.uuid===atmChatSelectedUuid);
+ if(atmCanEmployeeEditChatMessage(m))
+  showDialog({type:'atm-chat-message-editor',uuid:m.uuid,originalText:m.text,draftText:m.text,error:'',saving:false});
+ return;
+}
+if(a==='replyinstruction'){const m=messages.find(x=>x.id===Number(b.dataset.id));if(canReplyTo(m)){ctx={category:'Respuesta a instrucción',replyTo:m.id,vehicle:m.vehicle||null,taskType:m.taskType||null,taskId:m.taskId||null};draft='';render();setTimeout(()=>main.querySelector('#draft')?.focus(),0)}return}if(a==='notebooking'||a==='notejob'){if(me?.role!=='admin')return;showDialog({type:'adminnote',taskType:a==='notebooking'?'booking':'job',taskId:Number(b.dataset.id)});return}if(a==='backchat'){thread=null;render();return}if(a==='atm-followup-skip'&&dialog?.type==='atm-followup-choice'&&me?.role!=='admin'){
  closeDialog();return;
 }
 if(a==='atm-followup-list'&&dialog?.type==='atm-followup-choice'&&me?.role!=='admin'){
@@ -2148,7 +2196,13 @@ if((a==='atm-record-view-bitacoras'||a==='atm-record-view-followups')&&me?.role!
  logCategory=a==='atm-record-view-bitacoras'?'Registrar bitácora':'Informar avance';
  tab='logs';closeDialog();render();return;
 }
-if(a==='plus'){showDialog({type:'categories'});return}if(a==='category'){category(b.dataset.cat);return}if(a==='backcategories'){showDialog({type:'categories'});return}if(a==='new-log-vehicle'&&me?.role!=='admin'&&['Registrar bitácora','Informar avance'].includes(dialog?.category)){showDialog({type:'newlogvehicle',category:dialog.category});return}
+if(a==='plus'){showDialog({type:'categories'});return}if(a==='category'){category(b.dataset.cat);return}
+if(a==='atm-independent-chat'&&me?.role!=='admin'&&dialog?.type==='vehicles'&&
+ ['Consultas y solicitudes','Reportar problema'].includes(dialog.category)){
+ const chosen=dialog.category;
+ ctx={category:chosen,vehicle:null,taskType:null,taskId:null,workDay:null};
+ draft='';closeDialog();render();setTimeout(()=>main.querySelector('#draft')?.focus(),0);return;
+}if(a==='backcategories'){showDialog({type:'categories'});return}if(a==='new-log-vehicle'&&me?.role!=='admin'&&['Registrar bitácora','Informar avance'].includes(dialog?.category)){showDialog({type:'newlogvehicle',category:dialog.category});return}
 if(a==='back-log-vehicles'&&me?.role!=='admin'&&dialog?.type==='newlogvehicle'){showDialog({type:'vehicles',category:dialog.category});return}
 if(a==='select-standalone'&&me?.role!=='admin'&&['Registrar bitácora','Informar avance'].includes(dialog?.category)){
  const vehicle=b.dataset.vehicle,chosenDay=b.dataset.day,record=atmReportDates()
@@ -2211,6 +2265,58 @@ async function atmSaveEmployeeLogEdit(form){
   cloud.busy=false;page.saving=false;
  }
 }
+/* Corregir el cuerpo de un mensaje propio sin emitir un nuevo aviso. */
+async function atmSaveEmployeeChatEdit(form){
+ const page=dialog,m=messages.find(x=>x.uuid===page?.uuid);
+ if(page?.type!=='atm-chat-message-editor'||page.saving||!atmCanEmployeeEditChatMessage(m))return;
+ const value=String(new FormData(form).get('entry')||'').trim();
+ if(!value||value.length>8000){page.error='Escribí un mensaje válido de hasta 8,000 caracteres.';overlay.innerHTML=modalHTML();return;}
+ if(m.text!==page.originalText){page.error='El mensaje cambió. Cerrá y volvé a abrir su edición.';overlay.innerHTML=modalHTML();return;}
+ if(value===m.text){atmChatSelectedUuid=null;closeDialog();render(true);return;}
+ if(!cloud.ready||!cloud.sb||cloud.loading||cloud.busy||cloud.retryPaused||cloud.expiring){
+  page.error='No se puede editar mientras la sincronización esté pendiente. Revisá la conexión.';
+  overlay.innerHTML=modalHTML();return;
+ }
+ const author=me.uuid,confirmed=cloud.lastNotice.has(m.uuid);
+ if(confirmed&&(draftSignature()!==cloud.revision||atmReadOutbox(author).length)){
+  page.error='Hay mensajes pendientes de sincronización. Reintentá cuando se hayan guardado.';
+  overlay.innerHTML=modalHTML();return;
+ }
+ page.saving=true;page.error='';page.draftText=value;overlay.innerHTML=modalHTML();
+ cloud.busy=true;
+ try{
+  if(confirmed){
+   const {data:session,error:sessionError}=await cloud.sb.auth.getSession();
+   if(sessionError||session?.session?.user?.id!==author||!session.session.access_token)
+    throw new Error('Tu sesión expiró. Ingresá nuevamente.');
+   const {data:updated,error:writeError}=await cloud.sb.from('atm_notices')
+    .update({body:value}).eq('id',m.uuid).eq('author_id',author)
+    .eq('target_employee_id',author).eq('body',page.originalText)
+    .is('copied_from_notice_id',null).select('id,body').maybeSingle();
+   if(writeError)throw writeError;
+   if(!updated||updated.id!==m.uuid||updated.body!==value)
+    throw new Error('El servidor no confirmó el cambio. Tu cuenta podría no tener permiso para editar mensajes enviados.');
+  }
+  m.text=value;reportLogs();
+  if(confirmed)cloud.revision=draftSignature();
+  else atmRememberPending();
+  atmChatSelectedUuid=null;closeDialog();render(true);
+  notify(confirmed?'Mensaje corregido':'Cambio pendiente de sincronizar');
+ }catch(e){
+  console.warn('No se pudo actualizar el mensaje enviado:',e);
+  page.error=String(e?.message||'No se pudo guardar la corrección.');
+  if(dialog===page)overlay.innerHTML=modalHTML();
+ }finally{cloud.busy=false;page.saving=false;}
+}
+root.addEventListener('submit',e=>{
+ if(e.target.id!=='atm-chat-edit-form')return;
+ e.preventDefault();e.stopImmediatePropagation();atmSaveEmployeeChatEdit(e.target);
+},true);
+root.addEventListener('keydown',e=>{
+ if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-a="atm-chat-select"]')){
+  e.preventDefault();e.target.click();
+ }
+},true);
 root.addEventListener('submit',e=>{
  if(e.target.id!=='atm-employee-log-edit-form')return;
  e.preventDefault();e.stopImmediatePropagation();
