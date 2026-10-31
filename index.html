@@ -508,6 +508,16 @@ const displaySchedule=(id,d)=>[...schedule(id,d),...standaloneLogs(id,d)];
 const ATM_FOCUS_PREFIX='[ATM_TAREA_ACTIVA_V1]';
 const ATM_OTHER_UUID='00000000-0000-4000-8000-000000000001';
 const ATM_OTHER_FOCUS='internal:'+ATM_OTHER_UUID;
+/* Identificador persistente de la bitácora independiente, sin tabla nueva. */
+const ATM_STANDALONE_NOTE_REF='[ATM_STANDALONE_NOTE_REF_V1]:';
+const atmStandaloneNoteRef=m=>m?.category==='Indicación del administrador'&&m.taskType==='standalone'&&
+ typeof m.standaloneSourceUuid==='string'&&
+ /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(m.standaloneSourceUuid)?
+ ATM_STANDALONE_NOTE_REF+m.standaloneSourceUuid:null;
+const atmStoredStandaloneNoteRef=row=>row?.category==='Indicación del administrador'&&
+ typeof row.task_snapshot==='string'&&row.task_snapshot.startsWith(ATM_STANDALONE_NOTE_REF)&&
+ /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(row.task_snapshot.slice(ATM_STANDALONE_NOTE_REF.length))?
+ row.task_snapshot.slice(ATM_STANDALONE_NOTE_REF.length):null;
 const ATM_OTHER_NAMES={
  orden:'Orden y limpieza del área',capacitacion:'Capacitación',
  mantenimiento:'Mantenimiento del taller',apoyo:'Apoyo en otras reparaciones',
@@ -776,7 +786,15 @@ function taskLogsHTML(item){
   if(m.employeeId!==r.userId||m.category!=='Respuesta a instrucción'||(!m.replyUuid&&!m.replyTo))return false;
   const parent=messages.find(x=>x.uuid===m.replyUuid||(m.replyTo!=null&&x.id===m.replyTo));
   if(!parent||parent.category!=='Indicación del administrador'||parent.employeeId!==r.userId)return false;
-  if(item.kind==='standalone')return parent.taskType==='standalone'&&parent.workDay===r.day&&atmVehicleKey(parent.vehicle)===atmVehicleKey(r.vehicle);
+  if(item.kind==='standalone'){
+   if(parent.taskType==='standalone'&&parent.standaloneSourceUuid)
+    return item.logs?.some(l=>l.uuid===parent.standaloneSourceUuid)||false;
+   /* Notas antiguas sin identificador: usar empleado, fecha y nombre;
+      no mezclar con vehículos formalmente agendados ese mismo día. */
+   return parent.taskId==null&&(!parent.taskType||parent.taskType==='standalone')&&
+    parent.workDay===r.day&&atmVehicleKey(parent.vehicle)===atmVehicleKey(r.vehicle)&&
+    !atmMatchingScheduledWork(r.day,r.userId,r.vehicle);
+  }
   return parent.taskType===item.kind&&parent.taskId!=null&&Number(parent.taskId)===Number(r.id);
  });
  const answerBlock=answers.length?'<div class="atm-work-log atm-task-reply"><strong>↩ Respuestas a consultas ('+answers.length+')</strong>'+
@@ -1879,7 +1897,8 @@ function sendTaskNote(type,id,text,allowReply){
  if(me?.role!=='admin'||!text.trim())return false;
  const record=atmTaskNoteRecord(type,id);
  if(!record||!record.userId||!staff().some(u=>u.id===record.userId))return false;
- messages.push({uuid:crypto.randomUUID(),id:nextMsg++,employeeId:record.userId,sender:me.id,category:'Indicación del administrador',vehicle:record.vehicle||record.title,text:text.trim(),ts:Date.now(),allowReply,replyTo:null,taskType:type,taskId:record.id??null,workDay:record.day});
+ messages.push({uuid:crypto.randomUUID(),id:nextMsg++,employeeId:record.userId,sender:me.id,category:'Indicación del administrador',vehicle:record.vehicle||record.title,text:text.trim(),ts:Date.now(),allowReply,replyTo:null,taskType:type,taskId:record.id??null,workDay:record.day,
+  ...(type==='standalone'?{standaloneSourceUuid:id}:{})});
  tab='chat';thread=record.userId;ctx=null;draft='';adminAllowReply=false;closeDialog();historyGroup++;render();notify('Nota creada para '+(user(record.userId)?.name||'el técnico')+' ');return true;
 }
 function category(cat){const selected=opts.find(x=>x[0]===cat);if(!selected)return;if(selected[3])showDialog({type:'vehicles',category:cat});else{ctx={category:cat};closeDialog();render()}}
@@ -1977,6 +1996,11 @@ async function transfer(move){
  }
  const source=page.src,destination=page.dest;
  const sourceRealLogs=atmDayLogsForCopy(source,page.scope).length;
+ /* Selección de técnicos de origen; el estado de ejecución no se copia. */
+ const standaloneOwners=new Set(atmStandaloneSources(source,page.scope).map(m=>Number(m.employeeId)));
+ const resetOwners=move?[]:(page.scope==='all'?staff().map(u=>u.id):
+  page.scope==='pending'?[]:[Number(page.scope)]).filter(id=>
+   schedule(id,source).length>0||standaloneOwners.has(id));
  // Keep the same operation UUID even if the app is restarted after a
  // network response is lost. Do not overwrite any previous attempt.
  const attemptKey='atm_day_transfer_request_'+actor+'_'+source+'_'+destination+'_'+String(page.scope)+'_'+operation;
@@ -2026,6 +2050,16 @@ async function transfer(move){
     const cleanReloaded=await cloudLoad();
     if(!cleanReloaded||!cloud.ready)throw new Error('La copia quedó guardada y las referencias anteriores se retiraron, pero falta actualizar la vista.');
    }
+  }
+  /* Al copiar se selecciona tarea 1 del nuevo día, incluso cuando éste ya tenía
+     otro vehículo u "Otras actividades" en azul. No altera la fecha de origen.
+     Usar el marcador administrativo que ya se sincroniza entre dispositivos. */
+  if(!move&&result.work_count>0)for(const id of resetOwners){
+   const first=displaySchedule(id,destination)[0],focus=atmFocusWorkId(first);
+   if(!focus||atmActiveWorkId(id,destination)===focus)continue;
+   if(!await atmAdminSelectActiveWork(id,destination,focus))
+    throw new Error('La copia quedó guardada, pero falta reiniciar en la tarea 1 a '+
+     (user(id)?.name||'un técnico')+'. Reintentá para completar la selección.');
   }
   // Only release the retry key after the server and the refreshed calendar agree.
   try{if(localStorage.getItem(attemptKey)===requestId)localStorage.removeItem(attemptKey);}catch(_){}
@@ -3359,12 +3393,16 @@ const rowForMessage = m => {
   body:m.text,allow_reply:!!m.allowReply,reply_to:parent?.uuid||null,
   vehicle_caption:m.vehicle||ownTask?.vehicle||ownTask?.title||null,
   work_day:m.workDay||ownTask?.day||null,priority_caption:ownTask?.priority||null,
-  task_snapshot:ownTask?.instructions||ownTask?.detail||null,created_at:new Date(m.ts).toISOString()};
+  task_snapshot:atmStandaloneNoteRef(m)||ownTask?.instructions||ownTask?.detail||null,created_at:new Date(m.ts).toISOString()};
 };
 function noticeToUI(row,workByUuid){let owner=uiFor(row.target_employee_id),send=uiFor(row.author_id);
- const w=workByUuid.get(row.work_item_id),localCat=row.category==='Respuesta a administración'?'Respuesta a instrucción':row.category;
+ const w=workByUuid.get(row.work_item_id),standaloneRef=atmStoredStandaloneNoteRef(row),
+  localCat=row.category==='Respuesta a administración'?'Respuesta a instrucción':row.category;
  const ts=new Date(row.created_at).getTime();let localId=cloud.noticeUiIds.get(row.id);if(!localId){localId=nextMsg++;cloud.noticeUiIds.set(row.id,localId)};
- return {uuid:row.id,id:localId,employeeId:owner,sender:send,category:localCat,vehicle:row.vehicle_caption||w?.vehicle||w?.title||null,text:row.body,allowReply:row.allow_reply,replyUuid:row.reply_to,replyTo:null,taskType:w?('title' in w?'job':'booking'):null,taskId:w?.id||null,workDay:row.work_day||w?.day||null,priority:row.priority_caption||w?.priority||null,taskDetail:row.task_snapshot||w?.instructions||w?.detail||'',copySourceDay:row.copied_from_work_day||null,copySourceNoticeId:row.copied_from_notice_id||null,ts};
+ return {uuid:row.id,id:localId,employeeId:owner,sender:send,category:localCat,vehicle:row.vehicle_caption||w?.vehicle||w?.title||null,text:row.body,allowReply:row.allow_reply,replyUuid:row.reply_to,replyTo:null,taskType:w?('title' in w?'job':'booking'):standaloneRef?'standalone':null,
+  standaloneSourceUuid:standaloneRef,taskId:w?.id||null,workDay:row.work_day||w?.day||null,
+  priority:row.priority_caption||w?.priority||null,
+  taskDetail:standaloneRef?'':row.task_snapshot||w?.instructions||w?.detail||'',copySourceDay:row.copied_from_work_day||null,copySourceNoticeId:row.copied_from_notice_id||null,ts};
 }
 function reportLogs(){logs=[];nextLog=1;messages.forEach(m=>{if(atmIsFocusNotice(m)||m.copySourceNoticeId||!['Informar avance','Reportar problema','Registrar bitácora'].includes(m.category))return;
  const w=m.taskType==='job'?jobs.find(x=>x.id===m.taskId):appointments.find(x=>x.id===m.taskId);
