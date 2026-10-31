@@ -165,20 +165,21 @@
 #app .atm-admin-focus-number{display:inline-flex;align-items:center;justify-content:center;
  min-width:42px;min-height:42px;box-sizing:border-box;cursor:pointer;touch-action:manipulation}
 #app .atm-admin-focus-number:focus-visible{outline:2px solid #2875d0;outline-offset:3px}
-#app .atm-other-card{width:100%;display:flex;flex-direction:column;gap:4px;text-align:left;border:1px solid #c9dcd0;background:#fff;border-radius:11px;padding:12px 13px;color:#244833;min-height:56px}
-#app .atm-other-card strong{font-size:13px;font-weight:850;color:#13452f}
-#app .atm-other-card .atm-other-sub{font-size:12px;color:#375d47;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
-#app button.atm-other-card{position:relative;padding:12px 35px 12px 62px;min-height:65px}
-#app button.atm-other-card:not(.atm-other-active){background:#f2ebff;border:2px solid #8b5ccb;box-shadow:0 2px 8px #6d43aa20;color:#562c8c}
-#app button.atm-other-card:not(.atm-other-active) strong{color:#562c8c}
-#app button.atm-other-card:not(.atm-other-active) .atm-other-hint{color:#7955a1}
-#app button.atm-other-card::before{content:"▤";position:absolute;left:12px;top:12px;display:grid;place-items:center;width:39px;height:39px;border-radius:9px;background:#e3d5ff;color:#6839a5;font-size:22px;font-weight:800}
+/* La tarjeta es botón para el empleado y tarjeta informativa para administración.
+   Ambas versiones comparten el morado disponible y el azul seleccionado. */
+#app .atm-other-card{position:relative;width:100%;display:flex;flex-direction:column;gap:4px;text-align:left;border:2px solid #8b5ccb;background:#f2ebff;border-radius:11px;padding:12px 35px 12px 62px;color:#562c8c;min-height:65px;box-shadow:0 2px 8px #6d43aa20}
+#app .atm-other-card strong{font-size:13px;font-weight:850;color:#562c8c}
+#app .atm-other-card .atm-other-sub{font-size:12px;color:#7955a1;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+#app .atm-other-card:not(.atm-other-active){background:#f2ebff!important;border-color:#8b5ccb!important;color:#562c8c!important}
+#app .atm-other-card:not(.atm-other-active) strong{color:#562c8c!important}
+#app .atm-other-card::before{content:"▤";position:absolute;left:12px;top:12px;display:grid;place-items:center;width:39px;height:39px;border-radius:9px;background:#e3d5ff;color:#6839a5;font-size:22px;font-weight:800}
 #app button.atm-other-card::after{content:"›";position:absolute;right:12px;top:14px;color:#6839a5;font-size:27px;font-weight:700;line-height:1}
 #app .atm-other-card.atm-other-active{background:#e4efff!important;border:2px solid #2875d0!important;box-shadow:0 0 0 1px #2875d030;color:#163b72!important}
 #app .atm-other-card.atm-other-active strong{color:#1255aa!important}
-#app button.atm-other-card.atm-other-active::before{background:#d2e6ff;color:#1255aa}
+#app .atm-other-card.atm-other-active .atm-other-sub{color:#163b72}
+#app .atm-other-card.atm-other-active::before{background:#d2e6ff;color:#1255aa}
 #app button.atm-other-card.atm-other-active::after{color:#2875d0}
-#app .atm-other-card .atm-other-hint{font-size:10px;color:#607862}
+#app .atm-other-card .atm-other-hint{font-size:10px;color:#7955a1}
 #app .atm-other-card.atm-other-active .atm-other-hint{color:#235d9d}
 
 
@@ -813,7 +814,9 @@ function taskLogsHTML(item){
   const arr=(related||[]).filter(l=>l.category===category);
   if(!arr.length)return '';
   return '<div class="atm-work-log"><strong>'+label+' ('+arr.length+')</strong>'+
-   arr.slice().sort((a,b)=>a.ts-b.ts).map(l=>'<div class="atm-work-log-entry"><div class="atm-work-log-text">'+esc(l.text)+'<small>'+esc(logClock(l.ts))+'</small></div>'+
+   arr.slice().sort((a,b)=>a.ts-b.ts).map(l=>'<div class="atm-work-log-entry"'+
+    (category==='Informar avance'&&l.uuid?' data-atm-followup-id="'+esc(l.uuid)+'"':'')+
+    '><div class="atm-work-log-text">'+esc(l.text)+'<small>'+esc(logClock(l.ts))+'</small></div>'+
     (category==='Registrar bitácora'&&l.uuid&&cloud.lastNotice.has(l.uuid)?'<button type="button" class="atm-work-log-delete" data-a="atm-inline-log-delete" data-uuid="'+esc(l.uuid)+'" title="Eliminar esta bitácora" aria-label="Eliminar esta bitácora">×</button>':'')+
     '</div>').join('')+'</div>';
  };
@@ -911,23 +914,63 @@ const unreadCount=(id)=>!me?0:convo(id).filter(x=>
  x.sender!==me.id&&x.uuid&&!cloud.readNoticeIds.has(x.uuid)).length;
 const totalUnread=()=>!me?0:me.role==='admin'?staff().reduce((n,x)=>n+unreadCount(x.id),0):unreadCount(me.id);
 const unreadCalendar=()=>!me||me.role==='admin'?[]:calendarChanges.filter(c=>c.recipient_id===me.uuid&&!c.read_at&&!cloud.readCalendarIds.has(c.id));
-function atmMarkFollowupsRead(id,date){
- if(me?.role!=='admin'||!cloud.ready||!cloud.sb)return;
- const actor=me.uuid,ids=atmUnreadFollowups(id).filter(m=>m.workDay===date).map(m=>m.uuid);
- if(!ids.length)return;
- ids.forEach(uuid=>cloud.readNoticeIds.add(uuid));
- cloud.sb.from('atm_notice_reads').upsert(ids.map(notice_id=>({notice_id,user_id:actor})),
-  {onConflict:'notice_id,user_id',ignoreDuplicates:true}).then(({error})=>{
-  if(error){ids.forEach(uuid=>cloud.readNoticeIds.delete(uuid));console.warn('Lectura de seguimientos pendiente',error.message);
-   if(me?.uuid===actor){notify('No se confirmó la lectura del seguimiento.');render(true);}}
- }).catch(e=>{ids.forEach(uuid=>cloud.readNoticeIds.delete(uuid));console.warn('Lectura de seguimientos',e);});
+/* Solo se reconocen como leídos los seguimientos que estuvieron visibles.
+   No se confirma la lectura simplemente por entrar a Calendario o Tareas. */
+const atmFollowupReadPending=new Set();
+let atmFollowupScrollTimer=null,highlightFollowup=null;
+function atmRefreshFollowupBadges(){
+ for(const badge of main.querySelectorAll('.atm-followup-unread[data-id]')){
+  const n=atmUnreadFollowups(Number(badge.dataset.id)).length;
+  if(n){badge.textContent=String(n);badge.setAttribute('aria-label',n+' seguimientos nuevos');}
+  else badge.remove();
+ }
 }
+function atmMarkFollowupsRead(ids){
+ if(me?.role!=='admin'||!cloud.ready||!cloud.sb||!Array.isArray(ids)||!ids.length)return;
+ const actor=me.uuid,unread=new Set(staff().flatMap(u=>atmUnreadFollowups(u.id).map(m=>m.uuid)));
+ const fresh=[...new Set(ids)].filter(id=>unread.has(id)&&!atmFollowupReadPending.has(id));
+ if(!fresh.length)return;
+ fresh.forEach(id=>{atmFollowupReadPending.add(id);cloud.readNoticeIds.add(id);});
+ atmRefreshFollowupBadges();
+ const revert=()=>{
+  fresh.forEach(id=>{atmFollowupReadPending.delete(id);cloud.readNoticeIds.delete(id);});
+  if(me?.uuid===actor){atmRefreshFollowupBadges();notify('No se confirmó la lectura de los seguimientos.');}
+ };
+ cloud.sb.from('atm_notice_reads').upsert(fresh.map(notice_id=>({notice_id,user_id:actor})),
+  {onConflict:'notice_id,user_id',ignoreDuplicates:true}).then(({error})=>{
+   if(error){console.warn('Lectura de seguimientos pendiente',error.message);revert();}
+   else fresh.forEach(id=>atmFollowupReadPending.delete(id));
+  }).catch(e=>{console.warn('Lectura de seguimientos pendiente',e);revert();});
+}
+function atmReadVisibleFollowups(){
+ if(me?.role!=='admin'||!cloud.ready||cloud.loading||!cloud.sb||dialog||
+  document.visibilityState!=='visible'||!['calendar','tasks'].includes(tab))return;
+ const viewport=main.getBoundingClientRect(),seenNow=[];
+ if(viewport.height<=0)return;
+ const unread=new Set(staff().flatMap(u=>atmUnreadFollowups(u.id).map(m=>m.uuid)));
+ for(const node of main.querySelectorAll('[data-atm-followup-id]')){
+  const id=node.dataset.atmFollowupId;
+  if(!unread.has(id)||atmFollowupReadPending.has(id))continue;
+  const rect=node.getBoundingClientRect();
+  if(rect.height<=0||rect.width<=0)continue;
+  const overlap=Math.min(rect.bottom,viewport.bottom)-Math.max(rect.top,viewport.top);
+  if(overlap>0&&overlap/Math.min(rect.height,viewport.height)>=0.75)
+   seenNow.push(id);
+ }
+ if(seenNow.length)atmMarkFollowupsRead(seenNow);
+}
+function atmScheduleFollowupSeenCheck(){
+ clearTimeout(atmFollowupScrollTimer);
+ if(me?.role==='admin'&&['calendar','tasks'].includes(tab))
+  atmFollowupScrollTimer=setTimeout(atmReadVisibleFollowups,650);
+}
+main.addEventListener('scroll',atmScheduleFollowupSeenCheck,{passive:true});
 function atmOpenUnreadFollowups(id){
  if(me?.role!=='admin')return;
  const m=atmUnreadFollowups(id)[0];if(!m||!/^\d{4}-\d{2}-\d{2}$/.test(m.workDay||''))return;
  tab='tasks';employee=id;day=m.workDay;week=day;thread=null;ctx=null;draft='';closeDialog();
  const item=m.taskType==='job'?jobs.find(x=>x.id===m.taskId):m.taskType==='booking'?appointments.find(x=>x.id===m.taskId):null;
- highlightWork=item?.uuid||null;atmMarkFollowupsRead(id,day);render();
+ highlightWork=item?.uuid||null;highlightFollowup=m.uuid;render();
 }
 function markRead(id){
  if(!me||!id||!cloud.sb)return;
@@ -1693,10 +1736,19 @@ if(msgs){
  else msgs.scrollTop=msgs.scrollHeight;
  highlightNotice=null;
 }
-if(highlightWork&&(tab==='calendar'||tab==='tasks')){
+if(highlightWork&&(tab==='calendar'||tab==='tasks')&&!highlightFollowup){
  const work=[...main.querySelectorAll('[data-work-uuid]')].find(el=>el.dataset.workUuid===highlightWork);
  if(work){work.classList.add('atm-push-target');main.scrollTop+=work.getBoundingClientRect().top-main.getBoundingClientRect().top-100;}
  highlightWork=null;
+}
+if(highlightFollowup&&(tab==='calendar'||tab==='tasks')){
+ const row=[...main.querySelectorAll('[data-atm-followup-id]')].find(el=>el.dataset.atmFollowupId===highlightFollowup);
+ if(row){
+  row.classList.add('atm-push-target');
+  main.scrollTop+=row.getBoundingClientRect().top-main.getBoundingClientRect().top-main.clientHeight/3;
+  atmScheduleFollowupSeenCheck();
+ }
+ highlightFollowup=null;highlightWork=null;
 }}
 /* Navegación independiente: nunca ocultar los tres accesos por un fallo
    temporal de contadores o por la recuperación de sesión después de Actualizar. */
@@ -3695,7 +3747,7 @@ async function cloudAfterLogin(id){const {data,error:e}=await cloud.sb.from('atm
     if(me.role==='admin'&&atmIsFollowupNotice(item)){
      tab='tasks';employee=item.employeeId;day=item.workDay||day;week=day;thread=null;ctx=null;dialog=null;draft='';
      const record=item.taskType==='job'?jobs.find(x=>x.id===item.taskId):item.taskType==='booking'?appointments.find(x=>x.id===item.taskId):null;
-     highlightWork=record?.uuid||null;atmMarkFollowupsRead(item.employeeId,day);render();
+     highlightWork=record?.uuid||null;highlightFollowup=item.uuid;render();
     }else{
      tab='chat';thread=me.role==='admin'?item.employeeId:null;ctx=null;dialog=null;draft='';highlightNotice=noticeId;render();
     }
