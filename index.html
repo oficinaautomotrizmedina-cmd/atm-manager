@@ -355,6 +355,19 @@
  #app .chathead{gap:5px;padding-left:7px;padding-right:7px}
  #app .chathead .atm-refresh-trigger{padding:2px}
 }
+/* Navegación inferior resistente a recargas en Android y PWA.
+   No depende de la altura calculada de las tarjetas del calendario. */
+#app.atm-has-bottom-nav .nav{
+ position:absolute!important;left:0;right:0;bottom:0;z-index:40;
+ width:100%;min-height:70px;display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));
+ flex:none;margin:0;padding:5px 5px max(7px,env(safe-area-inset-bottom));
+ background:#fff;border-top:1px solid #d5e5d8;
+}
+#app.atm-has-bottom-nav .nav button{min-height:56px;justify-content:center}
+#app.atm-has-bottom-nav .content{
+ margin-bottom:calc(70px + max(0px,env(safe-area-inset-bottom)));
+ min-height:0;flex:1 1 auto;
+}
 </style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script><link href="./manifest.webmanifest" rel="manifest"/><meta content="#0e604d" name="theme-color"/></head><body><div id="app"><div class="header" id="head"></div><div class="content" id="main"></div><div class="nav" id="nav"></div><div id="overlay"></div><div class="floattrash" id="trash">🗑</div><div class="toast" id="toast"></div></div>
 <script>
 (()=>{
@@ -1483,11 +1496,31 @@ if(highlightWork&&tab==='calendar'){
  if(work){work.classList.add('atm-push-target');main.scrollTop+=work.getBoundingClientRect().top-main.getBoundingClientRect().top-100;}
  highlightWork=null;
 }}
+/* Navegación independiente: nunca ocultar los tres accesos por un fallo
+   temporal de contadores o por la recuperación de sesión después de Actualizar. */
+function atmRenderBottomNavigation(){
+ root.classList.toggle('atm-has-bottom-nav',!!me);
+ if(!me){nav.style.display='none';nav.innerHTML='';return;}
+ const admin=me.role==='admin';
+ const tabs=admin?[['calendar','Calendario','▦'],['tasks','Tareas','☑'],['chat','Chat','▤']]:
+  [['calendar','Calendario','▦'],['records','Registros','📋'],['chat','IA Chat','▤']];
+ let chatCount=0,calendarCount=0;
+ try{chatCount=Number(totalUnread())||0;}catch(e){console.warn('Contador de chat no disponible:',e);}
+ try{calendarCount=unreadCalendar().length||0;}catch(e){console.warn('Contador de calendario no disponible:',e);}
+ nav.style.display='grid';
+ nav.style.gridTemplateColumns='repeat(3,minmax(0,1fr))';
+ nav.innerHTML=tabs.map(([key,title,symbol])=>
+  '<button type="button" data-tab="'+key+'" class="'+(key===tab||(key==='records'&&tab==='logs'&&!admin)?'active':'')+'">'+
+  '<span class="symbol">'+symbol+'</span>'+title+
+  (key==='chat'&&chatCount?'<span class="nav-unread">'+chatCount+'</span>':
+   key==='calendar'&&calendarCount?'<span class="nav-unread">'+calendarCount+'</span>':'')+
+  '</button>').join('');
+}
 function render(keepMainScroll=false){root.classList.toggle('is-admin',me?.role==='admin');head.innerHTML='<button type="button" class="mark" data-a="atm-account-menu" aria-label="Abrir menú del taller" title="Opciones del taller">'+logoIMG()+'</button><div class="grow"><strong>ATM Manager</strong><small>AUTOMOTRIZ MEDINA SV</small></div>'+
  (me?'<button type="button" class="atm-refresh-trigger" data-a="atm-manual-refresh" aria-label="Actualizar aplicación" title="Actualizar">↻</button>':'')+
  (me?.role==='admin'?'<button data-a="openlogs" class="header-logicon'+(tab==='logs'?' on':'')+'" aria-label="Bitácoras del día" title="Bitácoras"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7a3 3 0 0 1 3 3v14H7a3 3 0 0 0-3-3V4Zm16 0h-6a3 3 0 0 0-3 3v14h6a3 3 0 0 1 3-3V4Z"/></svg></button>':'');
 /* Navegación persistente en todas las vistas para cuentas autenticadas, incluyendo IA Chat. */
-if(!me){nav.style.display='none'}else{const tabs=me.role==='admin'?[['calendar','Calendario','▦'],['tasks','Tareas','☑'],['chat','Chat','▤']]:[['calendar','Calendario','▦'],['records','Registros','📋'],['chat','IA Chat','▤']];nav.style.display='grid';nav.style.gridTemplateColumns=`repeat(${tabs.length},1fr)`;nav.innerHTML=tabs.map(([k,t,icon])=>'<button data-tab="'+k+'" class="'+(k===tab||(k==='records'&&tab==='logs'&&me?.role!=='admin')?'active':'')+'"><span class="symbol">'+icon+'</span>'+t+(k==='chat'&&totalUnread()?'<span class="nav-unread">'+totalUnread()+'</span>':k==='calendar'&&unreadCalendar().length?'<span class="nav-unread">'+unreadCalendar().length+'</span>':'')+'</button>').join('')}
+atmRenderBottomNavigation();
 drawMain(keepMainScroll);overlay.innerHTML=modalHTML();
 if(tab==='chat'&&!cloud.retryPaused){const status=root.querySelector('#atm-cloud-status');if(status&&['Sincronizando…','Guardado en Supabase'].includes(status.textContent))status.style.display='none';}
 if(!suppressHistory){saveDemo();syncHistory()}}
@@ -1540,6 +1573,16 @@ async function atmManualRefresh(){
   busyStatus('');
  }
 }
+/* Reconstruir únicamente si la navegación falta. No recargar datos ni
+   reiniciar el estado del empleado. */
+function atmRepairBottomNavigation(){
+ if(!me)return;
+ if(nav.style.display!=='grid'||nav.querySelectorAll('[data-tab]').length!==3)
+  atmRenderBottomNavigation();
+}
+window.addEventListener('pageshow',atmRepairBottomNavigation);
+window.addEventListener('focus',atmRepairBottomNavigation);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)atmRepairBottomNavigation();});
 function send(fromLogEditor=false){
  const text=draft.trim();if(!text||!me)return;
  if(ctx?.category==='Registrar bitácora'&&(!fromLogEditor||me.role==='admin'||!ctx.vehicle||!ctx.workDay))return;
