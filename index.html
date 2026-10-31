@@ -886,6 +886,12 @@ function closeDialog(){atmClockDismiss();const wasOpen=!!dialog;dialog=null;over
 function doLogin(u,p){return cloudLogin(u,p)}
 function logout(){me=null;tab='calendar';employee=null;thread=null;ctx=null;draft='';closeDialog();saveDemo();render()}
 function atmRestoreViewHTML(){return '<div role="status" aria-live="polite" style="padding:30px 20px;text-align:center;color:#19513a;font-size:15px">Recuperando sesión de ATM Manager…</div>'}
+function atmReconnectHTML(){
+ return '<div class="page"><div class="card"><strong>No se pudo cargar la información del taller.</strong>'+
+ '<p class="sub">La sesión se mantiene abierta. No se han eliminado registros. Revisá la conexión y reintentá.</p>'+
+ '<button class="btn" type="button" data-a="atm-reconnect-data">↻ Reintentar conexión</button></div></div>';
+}
+
 function atmSessionWasActive(){try{return localStorage.getItem('atm_session_expected')==='1'}catch(_){return false}}
 function atmRememberSession(active){try{if(active)localStorage.setItem('atm_session_expected','1');else localStorage.removeItem('atm_session_expected')}catch(_){}}
 function loginHTML(){return '<div class="page login">'+logoIMG('loginlogo')+'<div style="text-align:center">'+heading('Ingresar a ATM Manager','AUTOMOTRIZ MEDINA SV')+'</div><form class="card" id="login"><label class="field">Usuario<input name="username" autocomplete="username" required></label><label class="field">Contraseña<input name="password" type="password" autocomplete="current-password" required></label>'+(error?'<div class="alert">'+esc(error)+'</div>':'')+'<button class="btn" type="submit">Ingresar</button></form></div>'}
@@ -1462,8 +1468,8 @@ window.addEventListener('popstate',e=>{
 
 function drawMain(keep=false){let scroll=keep?main.scrollTop:0;
 const lastChatScroll=keep?main.querySelector('#messages')?.scrollTop:null;
-const isDetail=me&&tab==='chat'&&(me.role!=='admin'||thread);if(isDetail)markRead(me.role==='admin'?thread:me.id);
-head.style.display=isDetail?'none':'flex';main.innerHTML=!me?(atmSessionBooting||cloud.sessionRestoring?atmRestoreViewHTML():loginHTML()):tab==='users'?usersHTML():tab==='logs'?logsHTML():tab==='records'?atmRecordsHTML():tab==='tasks'?tasksHTML():tab==='calendar'?calendarHTML():isDetail?chatHTML():inboxHTML();main.scrollTop=scroll;
+const isDetail=me&&cloud.ready&&tab==='chat'&&(me.role!=='admin'||thread);if(isDetail)markRead(me.role==='admin'?thread:me.id);
+head.style.display=isDetail?'none':'flex';main.innerHTML=!me?(atmSessionBooting||cloud.sessionRestoring?atmRestoreViewHTML():loginHTML()):!cloud.ready?atmReconnectHTML():tab==='users'?usersHTML():tab==='logs'?logsHTML():tab==='records'?atmRecordsHTML():tab==='tasks'?tasksHTML():tab==='calendar'?calendarHTML():isDetail?chatHTML():inboxHTML();main.scrollTop=scroll;
 const msgs=main.querySelector('#messages');
 if(msgs){
  const notice=highlightNotice?[...msgs.querySelectorAll('[data-notice-uuid]')].find(el=>el.dataset.noticeUuid===highlightNotice):null;
@@ -1480,7 +1486,8 @@ if(highlightWork&&tab==='calendar'){
 function render(keepMainScroll=false){root.classList.toggle('is-admin',me?.role==='admin');head.innerHTML='<button type="button" class="mark" data-a="atm-account-menu" aria-label="Abrir menú del taller" title="Opciones del taller">'+logoIMG()+'</button><div class="grow"><strong>ATM Manager</strong><small>AUTOMOTRIZ MEDINA SV</small></div>'+
  (me?'<button type="button" class="atm-refresh-trigger" data-a="atm-manual-refresh" aria-label="Actualizar aplicación" title="Actualizar">↻</button>':'')+
  (me?.role==='admin'?'<button data-a="openlogs" class="header-logicon'+(tab==='logs'?' on':'')+'" aria-label="Bitácoras del día" title="Bitácoras"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7a3 3 0 0 1 3 3v14H7a3 3 0 0 0-3-3V4Zm16 0h-6a3 3 0 0 0-3 3v14h6a3 3 0 0 1 3-3V4Z"/></svg></button>':'');
-if(!me||(tab==='chat'&&(me?.role!=='admin'||thread))){nav.style.display='none'}else{const tabs=me.role==='admin'?[['calendar','Calendario','▦'],['tasks','Tareas','☑'],['chat','Chat','▤']]:[['calendar','Calendario','▦'],['records','Registros','📋'],['chat','IA Chat','▤']];nav.style.display='grid';nav.style.gridTemplateColumns=`repeat(${tabs.length},1fr)`;nav.innerHTML=tabs.map(([k,t,icon])=>'<button data-tab="'+k+'" class="'+(k===tab||(k==='records'&&tab==='logs'&&me?.role!=='admin')?'active':'')+'"><span class="symbol">'+icon+'</span>'+t+(k==='chat'&&totalUnread()?'<span class="nav-unread">'+totalUnread()+'</span>':k==='calendar'&&unreadCalendar().length?'<span class="nav-unread">'+unreadCalendar().length+'</span>':'')+'</button>').join('')}
+/* Navegación persistente en todas las vistas para cuentas autenticadas, incluyendo IA Chat. */
+if(!me){nav.style.display='none'}else{const tabs=me.role==='admin'?[['calendar','Calendario','▦'],['tasks','Tareas','☑'],['chat','Chat','▤']]:[['calendar','Calendario','▦'],['records','Registros','📋'],['chat','IA Chat','▤']];nav.style.display='grid';nav.style.gridTemplateColumns=`repeat(${tabs.length},1fr)`;nav.innerHTML=tabs.map(([k,t,icon])=>'<button data-tab="'+k+'" class="'+(k===tab||(k==='records'&&tab==='logs'&&me?.role!=='admin')?'active':'')+'"><span class="symbol">'+icon+'</span>'+t+(k==='chat'&&totalUnread()?'<span class="nav-unread">'+totalUnread()+'</span>':k==='calendar'&&unreadCalendar().length?'<span class="nav-unread">'+unreadCalendar().length+'</span>':'')+'</button>').join('')}
 drawMain(keepMainScroll);overlay.innerHTML=modalHTML();
 if(tab==='chat'&&!cloud.retryPaused){const status=root.querySelector('#atm-cloud-status');if(status&&['Sincronizando…','Guardado en Supabase'].includes(status.textContent))status.style.display='none';}
 if(!suppressHistory){saveDemo();syncHistory()}}
@@ -2360,7 +2367,17 @@ if(a==='atm-log-editor-draft'&&dialog?.type==='logeditor'&&me?.role!=='admin'&&c
  if(ctx.jobId!=null)drafts[me.id+':'+ctx.jobId]=draft;
  ctx=null;draft='';closeDialog();render();notify('Borrador de bitácora guardado');return;
 }
-if(a==='close'){if(dialog?.type==='logeditor'){ctx=null;draft='';closeDialog();render()}else closeDialog();return}if(a==='atm-manual-refresh'&&me){atmManualRefresh();return}
+if(a==='close'){if(dialog?.type==='logeditor'){ctx=null;draft='';closeDialog();render()}else closeDialog();return}if(a==='atm-reconnect-data'&&me){
+ if(cloud.busy||cloud.loading){notify('Conexión en curso.');return;}
+ busyStatus('Recuperando información…');
+ cloudLoad().then(ok=>{
+  if(!me)return;
+  if(ok){busyStatus('');render(true);}
+  else busyStatus('No se pudo cargar · Reintentá cuando vuelva la conexión');
+ }).catch(e=>{console.warn('Reconexión a ATM Manager:',e);busyStatus('Conexión no disponible');});
+ return;
+}
+if(a==='atm-manual-refresh'&&me){atmManualRefresh();return}
 if(a==='atm-refresh-retry'&&me&&dialog?.type==='atm-refresh-blocked'){
  closeDialog();
  if(!cloud.ready||cloud.busy||cloud.loading){notify('Sincronización en curso.');return;}
@@ -3298,7 +3315,12 @@ async function cloudLogin(username,password){error='';busyStatus('Ingresando…'
  finally{cloud.sessionRestoring=false;}}
 async function cloudAfterLogin(id){const {data,error:e}=await cloud.sb.from('atm_profiles').select('*').eq('user_id',id).maybeSingle();if(e||!data?.active)throw e||new Error('La cuenta no está activa');
  cloud.userIds.set(id,1);me={uuid:id,id:1,username:data.username,name:data.display_name,role:data.role,active:data.active,is_master:data.is_master};
- tab='calendar';day=initialWorkDay;week=initialWorkDay;filter='all';employee=null;thread=null;ctx=null;dialog=null;draft='';cloud.ready=false;loadUIReadState();cloud.retryPaused=false;cloud.expiring=false;await cloudLoad();if(historyBooted)syncHistory(true);await atmDeliverPending();cloudSubscribe();atmRememberSession(true);
+ tab='calendar';day=initialWorkDay;week=initialWorkDay;filter='all';employee=null;thread=null;ctx=null;dialog=null;draft='';cloud.ready=false;loadUIReadState();cloud.retryPaused=false;cloud.expiring=false;
+ const recovered=await cloudLoad();
+ if(!recovered)render();
+ if(historyBooted)syncHistory(true);
+ if(recovered)await atmDeliverPending();
+ cloudSubscribe();atmRememberSession(true);
  setTimeout(()=>atmPushOnLogin(),0);
  const params=new URLSearchParams(location.search),noticeId=params.get('aviso'),workId=params.get('trabajo');
  let opened=false;
