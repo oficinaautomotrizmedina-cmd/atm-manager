@@ -795,6 +795,15 @@ function taskLogsHTML(item){
     parent.workDay===r.day&&atmVehicleKey(parent.vehicle)===atmVehicleKey(r.vehicle)&&
     !atmMatchingScheduledWork(r.day,r.userId,r.vehicle);
   }
+  /* Un registro independiente puede convertirse después en tarea agendada.
+     Conservar las respuestas junto al vehículo convertido, sin crear copias. */
+  if(parent.taskType==='standalone'&&parent.standaloneSourceUuid)
+   return item.kind==='job'&&(r.uuid===parent.standaloneSourceUuid||
+    related.some(l=>l.uuid===parent.standaloneSourceUuid));
+  if(!parent.taskType&&parent.taskId==null&&parent.workDay===r.day&&
+     atmVehicleKey(parent.vehicle)===atmVehicleKey(item.kind==='job'?r.title:r.vehicle)&&
+     related.some(l=>l.taskType==='standalone'&&atmVehicleKey(l.vehicle)===atmVehicleKey(parent.vehicle)))
+    return true;
   return parent.taskType===item.kind&&parent.taskId!=null&&Number(parent.taskId)===Number(r.id);
  });
  const answerBlock=answers.length?'<div class="atm-work-log atm-task-reply"><strong>↩ Respuestas a consultas ('+answers.length+')</strong>'+
