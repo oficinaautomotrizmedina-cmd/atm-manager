@@ -277,7 +277,7 @@
 /* ATM Manager: barra inferior fija, historial Android y menú del taller. */
 @media(max-width:539px){
  html,body{height:100%;height:100dvh;overflow:hidden;margin:0;padding:0}
- #app{height:100vh;height:100dvh;min-height:0!important;max-height:100dvh;width:100%;border-radius:0}
+ #app{height:var(--atm-visible-height,100dvh);min-height:0!important;max-height:var(--atm-visible-height,100dvh);width:100%;border-radius:0}
 }
 #app{min-height:0!important}
 #app .content{min-height:0;flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y}
@@ -355,24 +355,39 @@
  #app .chathead{gap:5px;padding-left:7px;padding-right:7px}
  #app .chathead .atm-refresh-trigger{padding:2px}
 }
-/* Navegación inferior resistente a recargas en Android y PWA.
-   No depende de la altura calculada de las tarjetas del calendario. */
+/* Navegación inferior dentro del flujo real de la app: el calendario
+   siempre cede espacio y la barra no queda bajo el borde de Android. */
 #app.atm-has-bottom-nav .nav{
- position:absolute!important;left:0;right:0;bottom:0;z-index:3;
+ position:relative!important;left:auto;right:auto;bottom:auto;z-index:5;
  width:100%;min-height:70px;display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));
- flex:none;margin:0;padding:5px 5px max(7px,env(safe-area-inset-bottom));
+ flex:0 0 auto;align-self:stretch;margin:0;padding:5px 5px max(7px,env(safe-area-inset-bottom));
  background:#fff;border-top:1px solid #d5e5d8;
 }
 #app.atm-has-bottom-nav .nav button{min-height:56px;justify-content:center}
 #app.atm-has-bottom-nav .content{
- margin-bottom:calc(80px + max(0px,env(safe-area-inset-bottom)));
- min-height:0;flex:1 1 auto;
+ margin-bottom:0!important;
+ min-height:0;flex:1 1 0%;
 }
 </style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script><link href="./manifest.webmanifest" rel="manifest"/><meta content="#0e604d" name="theme-color"/></head><body><div id="app"><div class="header" id="head"></div><div class="content" id="main"></div><div class="nav" id="nav"></div><div id="overlay"></div><div class="floattrash" id="trash">🗑</div><div class="toast" id="toast"></div></div>
 <script>
 (()=>{
 'use strict';
 const root=document.querySelector('#app'),head=root.querySelector('#head'),main=root.querySelector('#main'),nav=root.querySelector('#nav'),overlay=root.querySelector('#overlay'),bin=root.querySelector('#trash');
+/* En Android/PWA, usar la altura realmente visible (sin la zona
+   ocupada por teclado o barras del sistema), sin cambiar datos ni sesión. */
+function atmUpdateVisibleHeight(){
+ if(!window.matchMedia('(max-width:539px)').matches){
+  root.style.removeProperty('--atm-visible-height');return;
+ }
+ const viewport=window.visualViewport;
+ const height=viewport&&Number.isFinite(viewport.height)?viewport.height:window.innerHeight;
+ if(Number.isFinite(height)&&height>200)
+  root.style.setProperty('--atm-visible-height',Math.floor(height)+'px');
+}
+atmUpdateVisibleHeight();
+window.addEventListener('resize',atmUpdateVisibleHeight,{passive:true});
+if(window.visualViewport)window.visualViewport.addEventListener('resize',atmUpdateVisibleHeight,{passive:true});
+
 const BASE=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/El_Salvador',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()),TODAY=BASE,today=BASE;
 let users=[],jobs=[],messages=[],logs=[],drafts={},calendarChanges=[];
 let nextUser=2,nextJob=1,nextMsg=1,nextLog=1;
@@ -1576,8 +1591,10 @@ async function atmManualRefresh(){
 /* Reconstruir únicamente si la navegación falta. No recargar datos ni
    reiniciar el estado del empleado. */
 function atmRepairBottomNavigation(){
+ atmUpdateVisibleHeight();
  if(!me)return;
- if(nav.style.display!=='grid'||nav.querySelectorAll('[data-tab]').length!==3)
+ if(!root.classList.contains('atm-has-bottom-nav')||
+    nav.style.display!=='grid'||nav.querySelectorAll('[data-tab]').length!==3)
   atmRenderBottomNavigation();
 }
 window.addEventListener('pageshow',atmRepairBottomNavigation);
