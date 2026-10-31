@@ -168,8 +168,16 @@
 #app .atm-other-card{width:100%;display:flex;flex-direction:column;gap:4px;text-align:left;border:1px solid #c9dcd0;background:#fff;border-radius:11px;padding:12px 13px;color:#244833;min-height:56px}
 #app .atm-other-card strong{font-size:13px;font-weight:850;color:#13452f}
 #app .atm-other-card .atm-other-sub{font-size:12px;color:#375d47;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+#app button.atm-other-card{position:relative;padding:12px 35px 12px 62px;min-height:65px}
+#app button.atm-other-card:not(.atm-other-active){background:#f2ebff;border:2px solid #8b5ccb;box-shadow:0 2px 8px #6d43aa20;color:#562c8c}
+#app button.atm-other-card:not(.atm-other-active) strong{color:#562c8c}
+#app button.atm-other-card:not(.atm-other-active) .atm-other-hint{color:#7955a1}
+#app button.atm-other-card::before{content:"▤";position:absolute;left:12px;top:12px;display:grid;place-items:center;width:39px;height:39px;border-radius:9px;background:#e3d5ff;color:#6839a5;font-size:22px;font-weight:800}
+#app button.atm-other-card::after{content:"›";position:absolute;right:12px;top:14px;color:#6839a5;font-size:27px;font-weight:700;line-height:1}
 #app .atm-other-card.atm-other-active{background:#e4efff!important;border:2px solid #2875d0!important;box-shadow:0 0 0 1px #2875d030;color:#163b72!important}
 #app .atm-other-card.atm-other-active strong{color:#1255aa!important}
+#app button.atm-other-card.atm-other-active::before{background:#d2e6ff;color:#1255aa}
+#app button.atm-other-card.atm-other-active::after{color:#2875d0}
 #app .atm-other-card .atm-other-hint{font-size:10px;color:#607862}
 #app .atm-other-card.atm-other-active .atm-other-hint{color:#235d9d}
 
