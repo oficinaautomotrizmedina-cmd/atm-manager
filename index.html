@@ -181,6 +181,15 @@
 #app button.atm-other-card.atm-other-active::after{color:#2875d0}
 #app .atm-other-card .atm-other-hint{font-size:10px;color:#7955a1}
 #app .atm-other-card.atm-other-active .atm-other-hint{color:#235d9d}
+#app .atm-other-back{display:inline-grid;place-items:center;flex:0 0 38px;width:38px;height:38px;border:0;border-radius:9px;background:#f2ebff;color:#6839a5;font-size:27px;font-weight:700}
+#app .atm-other-options{display:flex;flex-direction:column;gap:7px;margin:0;padding:0;border:0;min-width:0}
+#app .atm-other-options legend{font-size:12px;font-weight:800;color:#562c8c;margin-bottom:8px}
+#app .atm-other-option{display:flex;align-items:center;gap:10px;padding:10px 11px;min-height:45px;border:1px solid #e4dcf1;border-radius:10px;background:#faf8ff;color:#4d3378;font-size:12px;font-weight:740;cursor:pointer;line-height:1.35}
+#app .atm-other-option:has(input:checked){background:#f2ebff;border-color:#9c79d1;color:#562c8c}
+#app .atm-other-option input[type=radio]{width:18px;height:18px;margin:0;flex-shrink:0;accent-color:#8052bf}
+#app .atm-other-option-text{flex:1;min-width:0}
+#app .atm-other-option-check{visibility:hidden;color:#6839a5;font-weight:900;font-size:16px}
+#app .atm-other-option:has(input:checked) .atm-other-option-check{visibility:visible}
 
 
 #app .atm-work-log{background:#f0f8f2;border:1px solid #c9e2d1;border-left:3px solid #0d815c;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px}
@@ -1330,7 +1339,8 @@ root.addEventListener('click',e=>{
  }
 },true);
 document.addEventListener('keydown',e=>{
- if(atmClock&&e.key==='Escape'){e.preventDefault();e.stopPropagation();atmClockDismiss()}
+ if(atmClock&&e.key==='Escape'){e.preventDefault();e.stopPropagation();atmClockDismiss();return}
+ if(e.key==='Escape'&&dialog?.type==='atm-other-editor'){e.preventDefault();e.stopPropagation();closeDialog()}
 });
 
 function modalHTML(){if(!dialog)return '';let h='',sheet=false;
@@ -1527,13 +1537,17 @@ else if(dialog.type==='vehicles'){
 
 else if(dialog.type==='atm-other-editor'){
  sheet=true;
- const prev=atmOtherStatus(me?.id,dialog.day),selected=prev?.activity||'orden';
+ const prev=atmOtherStatus(me?.id,dialog.day),selected=prev?.activity||'';
  const people=staff().filter(u=>u.id!==me?.id),helper=prev?.helper||people[0]?.name||'';
- h='<h3>Otras actividades</h3><p class="sub">Seleccioná tu actividad fuera de los vehículos de la agenda.</p>'+
-  '<form id="atm-other-form" class="stack"><label class="field">Actividad'+
-  '<select name="activity" id="atm-other-choice">'+Object.entries(ATM_OTHER_NAMES)
-  .map(([key,name])=>'<option value="'+key+'" '+(selected===key?'selected':'')+'>'+esc(name)+'</option>').join('')+
-  '</select></label>'+
+ h='<div class="row" style="justify-content:flex-start"><button type="button" class="atm-other-back" data-a="close" aria-label="Volver sin registrar actividad">‹</button>'+
+  '<h3>Otras actividades</h3></div>'+
+  '<form id="atm-other-form" class="stack">'+
+  '<fieldset class="atm-other-options"><legend>¿Qué actividad vas a realizar?</legend>'+
+  Object.entries(ATM_OTHER_NAMES).map(([key,name])=>'<label class="atm-other-option">'+
+   '<input type="radio" name="activity" value="'+esc(key)+'" required '+(selected===key?'checked':'')+'>'+
+   '<span class="atm-other-option-text">'+esc(name)+'</span>'+
+   '<span class="atm-other-option-check" aria-hidden="true">✓</span></label>').join('')+
+  '</fieldset>'+
   '<div id="atm-other-help" class="stack" style="'+(selected==='apoyo'?'':'display:none')+'">'+
   '<label class="field">¿A qué compañero estás ayudando?<select name="helper">'+
   people.map(u=>'<option value="'+esc(u.name)+'" '+(helper===u.name?'selected':'')+'>'+esc(u.name)+'</option>').join('')+
@@ -1544,7 +1558,7 @@ else if(dialog.type==='atm-other-editor'){
   '<label class="field">¿Qué otra actividad estás realizando?'+
   '<input name="detail" maxlength="160" placeholder="Describí la actividad" value="'+esc(prev?.detail||'')+'"></label></div>'+
   '<div class="row"><button type="button" class="btn ghost" data-a="close">Cancelar</button>'+
-  '<button type="submit" class="btn">Seleccionar actividad</button></div></form>';
+  '<button type="submit" class="btn">Confirmar actividad</button></div></form>';
 }
 else if(dialog.type==='atm-followup-choice'){
  sheet=true;
@@ -2686,7 +2700,7 @@ async function atmLogDeleteNow(page){
  }
 }
 root.addEventListener('change',e=>{
- if(e.target.id==='atm-other-choice'&&dialog?.type==='atm-other-editor'){
+ if(e.target.name==='activity'&&e.target.form?.id==='atm-other-form'&&dialog?.type==='atm-other-editor'){
  const mode=e.target.value,help=overlay.querySelector('#atm-other-help'),other=overlay.querySelector('#atm-other-free');
  if(help)help.style.display=mode==='apoyo'?'':'none';
  if(other)other.style.display=mode==='otro'?'':'none';
