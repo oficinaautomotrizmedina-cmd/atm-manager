@@ -934,7 +934,7 @@ function atmMarkFollowupsRead(ids){
  atmRefreshFollowupBadges();
  const revert=()=>{
   fresh.forEach(id=>{atmFollowupReadPending.delete(id);cloud.readNoticeIds.delete(id);});
-  if(me?.uuid===actor){atmRefreshFollowupBadges();notify('No se confirmó la lectura de los seguimientos.');}
+  if(me?.uuid===actor){render(true);notify('No se confirmó la lectura de los seguimientos.');}
  };
  cloud.sb.from('atm_notice_reads').upsert(fresh.map(notice_id=>({notice_id,user_id:actor})),
   {onConflict:'notice_id,user_id',ignoreDuplicates:true}).then(({error})=>{
