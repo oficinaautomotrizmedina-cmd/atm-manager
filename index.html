@@ -563,27 +563,79 @@ function atmOtherColleagues(){
  return [...found.values()].sort((a,b)=>a.name.localeCompare(b.name,'es'));
 }
 /* Solo tareas realmente asignadas al compañero en la agenda cargada del día. */
+
+/* Catálogo de solo lectura: títulos, sin instrucciones, detalles ni permiso
+   para modificar tareas ajenas. Lo entrega la función protegida del servidor. */
+let atmSupportCatalog={key:'',loading:false,ready:false,rows:[],error:''};
+const atmSupportKey=date=>(me?.uuid||'')+'|'+date;
+const atmSupportAvailable=date=>atmSupportCatalog.ready&&atmSupportCatalog.key===atmSupportKey(date);
+function atmSupportDisplayName(name){
+ const matched=ATM_OTHER_TEAM.find(n=>atmOtherNameKey(n)===atmOtherNameKey(name));
+ return matched||String(name||'').trim();
+}
+async function atmLoadSupportCatalog(date,force=false){
+ if(!me?.uuid||me.role==='admin'||date!==atmActualToday()||!cloud.ready||!cloud.sb)return;
+ const key=atmSupportKey(date);
+ if(!force&&atmSupportCatalog.key===key&&(atmSupportCatalog.loading||atmSupportCatalog.ready))return;
+ atmSupportCatalog={key,loading:true,ready:false,rows:[],error:''};
+ const update=()=>{
+  if(!me||atmSupportCatalog.key!==key||dialog?.type!=='atm-other-editor'||dialog.day!==date)return;
+  const helper=overlay.querySelector('input[name="helper"]:checked')?.value||'';
+  const target=overlay.querySelector('#atm-other-tasks');
+  if(target)target.innerHTML=atmOtherTaskOptionsHTML(helper,date);
+ };
+ update();
+ try{
+  const {data,error}=await cloud.sb.rpc('atm_support_team_titles',{p_day:date});
+  if(error)throw error;
+  if(!Array.isArray(data))throw new Error('El servidor no devolvió la lista de tareas.');
+  if(!me||atmSupportKey(date)!==key)return;
+  const rows=data.filter(r=>r&&typeof r.employee_id==='string'&&
+    typeof r.display_name==='string'&&r.display_name.trim()&&
+    r.employee_id!==me.uuid&&
+    (!r.task_id||(
+     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(r.task_id)&&
+     ['booking','job'].includes(r.task_kind)&&
+     typeof r.title==='string'&&r.title.trim()
+    )));
+  atmSupportCatalog={key,loading:false,ready:true,rows,error:''};
+ }catch(e){
+  if(!me||atmSupportKey(date)!==key)return;
+  console.warn('No se pudieron consultar los títulos de tareas de compañeros:',e.message);
+  atmSupportCatalog={key,loading:false,ready:false,rows:[],
+    error:'No se pudieron cargar los títulos de las tareas. Revisá la conexión y reintentá.'};
+ }
+ update();
+}
 function atmOtherHelperTasks(helper,date){
- const person=atmOtherColleagues().find(u=>u.name===helper);
- if(!person||person.id==null||!/^\d{4}-\d{2}-\d{2}$/.test(date))return [];
- const owner=users.find(u=>u.id===person.id);
- if(!owner||owner.role==='admin'||owner.active===false)return [];
- return schedule(person.id,date).filter(item=>
-  ['job','booking'].includes(item.kind)&&item.record?.userId===person.id&&
-  item.record?.day===date&&typeof item.record?.uuid==='string'&&
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item.record.uuid));
+ const nameKey=atmOtherNameKey(helper);
+ if(!nameKey||!atmSupportAvailable(date))return [];
+ const matched=atmSupportCatalog.rows.filter(r=>
+  atmOtherNameKey(r.display_name)===nameKey&&r.task_id);
+ return matched.map(r=>({
+  kind:r.task_kind,
+  record:{uuid:r.task_id,day:date,userId:r.employee_id,
+   title:r.title,vehicle:r.title,order:r.sort_order}
+ }));
 }
 function atmOtherTaskOptionsHTML(helper,date,selectedUuid=''){
  const name=String(helper||'').trim();
  if(!name)return '<p class="sub">Seleccioná un compañero para ver sus tareas de hoy.</p>';
- const colleague=atmOtherColleagues().find(u=>u.name===name);
- if(!colleague||colleague.id==null)
-  return '<p class="notice" role="status">La agenda de '+esc(name)+
-   ' no está disponible en esta cuenta. Administración debe habilitar la consulta de tareas de compañeros.</p>';
+ if(!atmSupportAvailable(date)){
+  const message=atmSupportCatalog.key===atmSupportKey(date)&&atmSupportCatalog.error?
+    atmSupportCatalog.error:'Cargando las tareas asignadas del compañero…';
+  return '<p class="notice" role="status">'+esc(message)+'</p>'+
+   (atmSupportCatalog.key===atmSupportKey(date)&&atmSupportCatalog.error?
+    '<button type="button" class="btn ghost" data-a="atm-other-reload-tasks">Reintentar</button>':'');
+ }
+ const colleague=atmSupportCatalog.rows.find(r=>
+  atmOtherNameKey(r.display_name)===atmOtherNameKey(name));
+ if(!colleague)
+  return '<p class="notice" role="status">No hay información de tareas disponible para '+esc(name)+'.</p>';
  const tasks=atmOtherHelperTasks(name,date);
  if(!tasks.length)
-  return '<p class="notice" role="status">No hay tareas asignadas visibles de '+esc(name)+
-   ' para este día. No se puede confirmar el apoyo sin elegir una tarea.</p>';
+  return '<p class="notice" role="status">'+esc(name)+
+   ' no tiene tareas asignadas para este día.</p>';
  return '<fieldset class="atm-other-options" aria-label="Elegir tarea del compañero">'+
   '<legend>¿En cuál tarea lo vas a apoyar?</legend>'+
   tasks.map((item,index)=>{
@@ -2938,7 +2990,11 @@ if(a==='atm-retry-chat-reply'&&me?.role!=='admin'&&tab==='chat'){
  return;
 }
 if(a==='replyinstruction'){const m=messages.find(x=>x.id===Number(b.dataset.id));if(canReplyTo(m)){ctx={category:'Respuesta a instrucción',replyTo:m.id,vehicle:m.vehicle||null,taskType:m.taskType||null,taskId:m.taskId||null};draft='';render();setTimeout(()=>main.querySelector('#draft')?.focus(),0)}return}if(a==='notebooking'||a==='notejob'){if(me?.role!=='admin')return;showDialog({type:'adminnote',taskType:a==='notebooking'?'booking':'job',taskId:Number(b.dataset.id)});return}if(a==='backchat'){thread=null;render();return}if(a==='atm-other-open'&&me?.role!=='admin'&&tab==='calendar'&&b.dataset.day===atmActualToday()){
- showDialog({type:'atm-other-editor',day:b.dataset.day});return;
+ showDialog({type:'atm-other-editor',day:b.dataset.day});
+ atmLoadSupportCatalog(b.dataset.day);return;
+}
+if(a==='atm-other-reload-tasks'&&dialog?.type==='atm-other-editor'&&me?.role!=='admin'){
+ atmLoadSupportCatalog(dialog.day,true);return;
 }
 if(a==='atm-followup-skip'&&dialog?.type==='atm-followup-choice'&&me?.role!=='admin'){
  closeDialog();return;
