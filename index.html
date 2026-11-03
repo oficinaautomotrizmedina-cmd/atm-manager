@@ -562,6 +562,38 @@ function atmOtherColleagues(){
  }
  return [...found.values()].sort((a,b)=>a.name.localeCompare(b.name,'es'));
 }
+/* Solo tareas realmente asignadas al compañero en la agenda cargada del día. */
+function atmOtherHelperTasks(helper,date){
+ const person=atmOtherColleagues().find(u=>u.name===helper);
+ if(!person||person.id==null||!/^\d{4}-\d{2}-\d{2}$/.test(date))return [];
+ const owner=users.find(u=>u.id===person.id);
+ if(!owner||owner.role==='admin'||owner.active===false)return [];
+ return schedule(person.id,date).filter(item=>
+  ['job','booking'].includes(item.kind)&&item.record?.userId===person.id&&
+  item.record?.day===date&&typeof item.record?.uuid==='string'&&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item.record.uuid));
+}
+function atmOtherTaskOptionsHTML(helper,date,selectedUuid=''){
+ const name=String(helper||'').trim();
+ if(!name)return '<p class="sub">Seleccioná un compañero para ver sus tareas de hoy.</p>';
+ const colleague=atmOtherColleagues().find(u=>u.name===name);
+ if(!colleague||colleague.id==null)
+  return '<p class="notice" role="status">La agenda de '+esc(name)+
+   ' no está disponible en esta cuenta. Administración debe habilitar la consulta de tareas de compañeros.</p>';
+ const tasks=atmOtherHelperTasks(name,date);
+ if(!tasks.length)
+  return '<p class="notice" role="status">No hay tareas asignadas visibles de '+esc(name)+
+   ' para este día. No se puede confirmar el apoyo sin elegir una tarea.</p>';
+ return '<fieldset class="atm-other-options" aria-label="Elegir tarea del compañero">'+
+  '<legend>¿En cuál tarea lo vas a apoyar?</legend>'+
+  tasks.map((item,index)=>{
+   const uuid=item.record.uuid,vehicle=atmFocusVehicleName(item);
+   return '<label class="atm-other-option">'+
+    '<input type="radio" name="targetTask" value="'+esc(uuid)+'" '+(uuid===selectedUuid?'checked':'')+'>'+
+    '<span class="atm-other-option-text">'+(index+1)+'. '+esc(vehicle)+'</span>'+
+    '<span class="atm-other-option-check" aria-hidden="true">✓</span></label>';
+  }).join('')+'</fieldset>';
+}
 function atmFocusRead(m){
  if(!atmIsFocusNotice(m))return null;
  const employeeMarker=m.category==='Registrar bitácora'&&m.sender===m.employeeId;
@@ -619,7 +651,7 @@ function atmOtherCard(owner,date){
  const state=atmOtherStatus(owner,date),active=!!state;
  const extra=active&&state.activity==='apoyo'?
   '<span class="atm-other-sub">Compañero: '+esc(state.helper)+'</span>'+
-  '<span class="atm-other-sub">Vehículo: '+esc(state.vehicle)+'</span>':
+  '<span class="atm-other-sub">Tarea: '+esc(state.vehicle)+'</span>':
   active&&state.activity==='otro'?'<span class="atm-other-sub">'+esc(state.detail)+'</span>':'';
  const editable=me?.role!=='admin'&&me?.id===owner&&date===atmActualToday();
  return '<'+(editable?'button type="button"':'div')+' class="atm-other-card'+(active?' atm-other-active':'')+'"'+
@@ -629,16 +661,19 @@ function atmOtherCard(owner,date){
   extra+(editable?'<span class="atm-other-hint">Tocar para seleccionar o cambiar</span>':'')+
   '</'+(editable?'button':'div')+'>';
 }
-function atmSaveOtherActivity(date,activity,helper,vehicle,detail){
+function atmSaveOtherActivity(date,activity,helper,targetTask,detail){
  if(!me||me.role==='admin'||!me.uuid||date!==atmActualToday()||
   !cloud.ready||cloud.busy||cloud.loading||cloud.retryPaused||cloud.expiring)return false;
  if(!Object.prototype.hasOwnProperty.call(ATM_OTHER_NAMES,activity))return false;
- const employee=String(helper||'').trim(),car=String(vehicle||'').trim(),note=String(detail||'').trim();
- if(activity==='apoyo'&&(!atmOtherColleagues().some(u=>u.name===employee)||!car||car.length>130))return false;
+ const employee=String(helper||'').trim(),taskUuid=String(targetTask||'').trim(),
+  note=String(detail||'').trim();
+ const task=activity==='apoyo'?atmOtherHelperTasks(employee,date).find(x=>x.record.uuid===taskUuid):null;
+ const car=task?atmFocusVehicleName(task):'';
+ if(activity==='apoyo'&&(!task||!car||car.length>130))return false;
  if(activity==='otro'&&(!note||note.length>160))return false;
  const last=messages.reduce((n,m)=>m.employeeId===me.id&&atmFocusRead(m)?.day===date?Math.max(n,m.ts||0):n,0);
  const selected={day:date,kind:'internal',uuid:ATM_OTHER_UUID,activity,
-  ...(activity==='apoyo'?{helper:employee,vehicle:car}:{}),
+  ...(activity==='apoyo'?{helper:employee,vehicle:car,taskUuid:task.record.uuid,taskKind:task.kind}:{}),
   ...(activity==='otro'?{detail:note}:{})};
  messages.push({uuid:crypto.randomUUID(),id:nextMsg++,employeeId:me.id,sender:me.id,
   category:'Registrar bitácora',vehicle:'Otras actividades',workDay:date,
@@ -1587,8 +1622,7 @@ else if(dialog.type==='atm-other-editor'){
    '<span class="atm-other-option-check" aria-hidden="true">✓</span></label>').join(''):
    '<p class="notice" role="status">No hay compañeros disponibles para seleccionar. Informá a Administración.</p>')+
   '</fieldset>'+
-  '<label class="field">¿En qué vehículo estás ayudando?'+
-  '<input name="vehicle" maxlength="130" placeholder="Ej. Toyota Corolla 2011" value="'+esc(prev?.vehicle||'')+'"></label></div>'+
+  '<div id="atm-other-tasks" class="stack">'+atmOtherTaskOptionsHTML(helper,dialog.day,prev?.taskUuid||'')+'</div></div>'+
   '<div id="atm-other-free" style="'+(selected==='otro'?'':'display:none')+'">'+
   '<label class="field">¿Qué otra actividad estás realizando?'+
   '<input name="detail" maxlength="160" placeholder="Describí la actividad" value="'+esc(prev?.detail||'')+'"></label></div>'+
@@ -2740,6 +2774,10 @@ root.addEventListener('change',e=>{
  if(help)help.style.display=mode==='apoyo'?'':'none';
  if(other)other.style.display=mode==='otro'?'':'none';
 }
+if(e.target.name==='helper'&&e.target.form?.id==='atm-other-form'&&dialog?.type==='atm-other-editor'){
+ const target=overlay.querySelector('#atm-other-tasks');
+ if(target)target.innerHTML=atmOtherTaskOptionsHTML(e.target.value,dialog.day);
+}
 if(e.target.id==='atm-log-ack'){
   const button=overlay.querySelector('[data-a="atm-log-confirm-delete"]');
   if(button)button.disabled=!e.target.checked;
@@ -3207,11 +3245,16 @@ root.addEventListener('submit',e=>{e.preventDefault();const f=e.target;if(f.id==
 }
 
 if(f.id==='atm-other-form'&&dialog?.type==='atm-other-editor'&&me?.role!=='admin'){
- const d=new FormData(f),ok=atmSaveOtherActivity(dialog.day,String(d.get('activity')||''),
- d.get('helper'),d.get('vehicle'),d.get('detail'));
- if(!ok)notify(d.get('activity')==='apoyo'&&!d.get('helper')?
-   'Seleccioná al compañero que vas a ayudar.':
-   'Completá los datos obligatorios o revisá la sincronización.');
+ const d=new FormData(f),activity=String(d.get('activity')||''),
+  helper=String(d.get('helper')||''),taskUuid=String(d.get('targetTask')||'');
+ const ok=atmSaveOtherActivity(dialog.day,activity,helper,taskUuid,d.get('detail'));
+ if(!ok)notify(activity==='apoyo'?
+  !helper?'Seleccioná al compañero que vas a ayudar.':
+  !atmOtherHelperTasks(helper,dialog.day).length?
+   'No hay tareas visibles del compañero. No se registró ningún apoyo.':
+  !taskUuid?'Seleccioná en cuál tarea vas a apoyar al compañero.':
+   'La tarea seleccionada ya no está disponible. Elegí una tarea vigente.':
+  'Completá los datos obligatorios o revisá la sincronización.');
  return;
 }
 if(f.id==='atm-followup-form'){
