@@ -533,6 +533,35 @@ const ATM_OTHER_NAMES={
  mantenimiento:'Mantenimiento del taller',apoyo:'Apoyo en otras reparaciones',
  otro:'Otra actividad del taller'
 };
+/* Los perfiles de otros técnicos pueden no estar visibles en la sesión del
+   empleado. Mantener los tres compañeros del taller como respaldo local, sin
+   consultar más datos ni cambiar permisos. Dar prioridad a perfiles recibidos
+   y respetar bajas que sí sean visibles. */
+const ATM_OTHER_TEAM=['Edwin','Cristian','Rafael'];
+const atmOtherNameKey=name=>String(name||'').trim().normalize('NFD')
+ .replace(/[\u0300-\u036f]/g,'').split(/\s+/)[0].toLowerCase().replace(/^christian$/,'cristian');
+function atmOtherColleagues(){
+ if(!me||me.role==='admin')return [];
+ const ownKey=atmOtherNameKey(me.name),found=new Map();
+ const current=Array.isArray(users)?users:[];
+ for(const u of current){
+  if(!u||u.role==='admin'||u.active===false||u.id===me.id||
+     (me.uuid&&u.uuid===me.uuid))continue;
+  const key=atmOtherNameKey(u.name);
+  if(key&&key!==ownKey&&!found.has(key))
+   found.set(key,{id:u.id,name:String(u.name).trim()});
+ }
+ for(const label of ATM_OTHER_TEAM){
+  const key=atmOtherNameKey(label);
+  if(!key||key===ownKey||found.has(key))continue;
+  const known=current.find(u=>atmOtherNameKey(u?.name)===key);
+  if(known){
+   if(known.role==='admin'||known.active===false||known.id===me.id)continue;
+   found.set(key,{id:known.id,name:String(known.name).trim()});
+  }else found.set(key,{id:null,name:label});
+ }
+ return [...found.values()].sort((a,b)=>a.name.localeCompare(b.name,'es'));
+}
 function atmFocusRead(m){
  if(!atmIsFocusNotice(m))return null;
  const employeeMarker=m.category==='Registrar bitácora'&&m.sender===m.employeeId;
@@ -605,7 +634,7 @@ function atmSaveOtherActivity(date,activity,helper,vehicle,detail){
   !cloud.ready||cloud.busy||cloud.loading||cloud.retryPaused||cloud.expiring)return false;
  if(!Object.prototype.hasOwnProperty.call(ATM_OTHER_NAMES,activity))return false;
  const employee=String(helper||'').trim(),car=String(vehicle||'').trim(),note=String(detail||'').trim();
- if(activity==='apoyo'&&(!staff().some(u=>u.id!==me.id&&u.name===employee)||!car||car.length>130))return false;
+ if(activity==='apoyo'&&(!atmOtherColleagues().some(u=>u.name===employee)||!car||car.length>130))return false;
  if(activity==='otro'&&(!note||note.length>160))return false;
  const last=messages.reduce((n,m)=>m.employeeId===me.id&&atmFocusRead(m)?.day===date?Math.max(n,m.ts||0):n,0);
  const selected={day:date,kind:'internal',uuid:ATM_OTHER_UUID,activity,
@@ -1538,7 +1567,7 @@ else if(dialog.type==='vehicles'){
 else if(dialog.type==='atm-other-editor'){
  sheet=true;
  const prev=atmOtherStatus(me?.id,dialog.day),selected=prev?.activity||'';
- const people=staff().filter(u=>u.id!==me?.id);
+ const people=atmOtherColleagues();
  const helper=people.some(u=>u.name===prev?.helper)?prev.helper:'';
  h='<div class="row" style="justify-content:flex-start"><button type="button" class="atm-other-back" data-a="close" aria-label="Volver sin registrar actividad">‹</button>'+
   '<h3>Otras actividades</h3></div>'+
@@ -1556,7 +1585,7 @@ else if(dialog.type==='atm-other-editor'){
    '<input type="radio" name="helper" value="'+esc(u.name)+'" '+(helper===u.name?'checked':'')+'>'+
    '<span class="atm-other-option-text">'+esc(u.name)+'</span>'+
    '<span class="atm-other-option-check" aria-hidden="true">✓</span></label>').join(''):
-   '<p class="notice" role="status">No hay otros empleados activos disponibles. Administración debe revisar las cuentas de empleados.</p>')+
+   '<p class="notice" role="status">No hay compañeros disponibles para seleccionar. Informá a Administración.</p>')+
   '</fieldset>'+
   '<label class="field">¿En qué vehículo estás ayudando?'+
   '<input name="vehicle" maxlength="130" placeholder="Ej. Toyota Corolla 2011" value="'+esc(prev?.vehicle||'')+'"></label></div>'+
