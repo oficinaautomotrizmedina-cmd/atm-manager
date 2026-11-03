@@ -1538,7 +1538,8 @@ else if(dialog.type==='vehicles'){
 else if(dialog.type==='atm-other-editor'){
  sheet=true;
  const prev=atmOtherStatus(me?.id,dialog.day),selected=prev?.activity||'';
- const people=staff().filter(u=>u.id!==me?.id),helper=prev?.helper||people[0]?.name||'';
+ const people=staff().filter(u=>u.id!==me?.id);
+ const helper=people.some(u=>u.name===prev?.helper)?prev.helper:'';
  h='<div class="row" style="justify-content:flex-start"><button type="button" class="atm-other-back" data-a="close" aria-label="Volver sin registrar actividad">‹</button>'+
   '<h3>Otras actividades</h3></div>'+
   '<form id="atm-other-form" class="stack">'+
@@ -1549,9 +1550,14 @@ else if(dialog.type==='atm-other-editor'){
    '<span class="atm-other-option-check" aria-hidden="true">✓</span></label>').join('')+
   '</fieldset>'+
   '<div id="atm-other-help" class="stack" style="'+(selected==='apoyo'?'':'display:none')+'">'+
-  '<label class="field">¿A qué compañero estás ayudando?<select name="helper">'+
-  people.map(u=>'<option value="'+esc(u.name)+'" '+(helper===u.name?'selected':'')+'>'+esc(u.name)+'</option>').join('')+
-  '</select></label>'+
+  '<fieldset class="atm-other-options" aria-label="Seleccionar compañero">'+
+  '<legend>¿A qué compañero estás ayudando?</legend>'+
+  (people.length?people.map(u=>'<label class="atm-other-option">'+
+   '<input type="radio" name="helper" value="'+esc(u.name)+'" '+(helper===u.name?'checked':'')+'>'+
+   '<span class="atm-other-option-text">'+esc(u.name)+'</span>'+
+   '<span class="atm-other-option-check" aria-hidden="true">✓</span></label>').join(''):
+   '<p class="notice" role="status">No hay otros empleados activos disponibles. Administración debe revisar las cuentas de empleados.</p>')+
+  '</fieldset>'+
   '<label class="field">¿En qué vehículo estás ayudando?'+
   '<input name="vehicle" maxlength="130" placeholder="Ej. Toyota Corolla 2011" value="'+esc(prev?.vehicle||'')+'"></label></div>'+
   '<div id="atm-other-free" style="'+(selected==='otro'?'':'display:none')+'">'+
@@ -3174,7 +3180,9 @@ root.addEventListener('submit',e=>{e.preventDefault();const f=e.target;if(f.id==
 if(f.id==='atm-other-form'&&dialog?.type==='atm-other-editor'&&me?.role!=='admin'){
  const d=new FormData(f),ok=atmSaveOtherActivity(dialog.day,String(d.get('activity')||''),
  d.get('helper'),d.get('vehicle'),d.get('detail'));
- if(!ok)notify('Completá los datos obligatorios o revisá la sincronización.');
+ if(!ok)notify(d.get('activity')==='apoyo'&&!d.get('helper')?
+   'Seleccioná al compañero que vas a ayudar.':
+   'Completá los datos obligatorios o revisá la sincronización.');
  return;
 }
 if(f.id==='atm-followup-form'){
