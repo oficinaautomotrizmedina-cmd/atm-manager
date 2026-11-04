@@ -684,9 +684,15 @@ function atmActiveWorkId(owner,date){
   const focus=atmFocusRead(m);
   if(!focus||focus.day!==date)continue;
   if(!latest||m.ts>latest.ts||(m.ts===latest.ts&&String(m.uuid)>String(latest.uuid)))
-   latest={id:focus.kind+':'+focus.uuid,ts:m.ts,uuid:m.uuid};
+   latest={id:focus.kind+':'+focus.uuid,workUuid:focus.uuid,kind:focus.kind,ts:m.ts,uuid:m.uuid};
  }
- return latest&&(latest.id===ATM_OTHER_FOCUS||queue.some(item=>atmFocusWorkId(item)===latest.id))?latest.id:fallback;
+ if(!latest)return fallback;
+ if(latest.id===ATM_OTHER_FOCUS)return latest.id;
+ const selected=queue.find(item=>atmFocusWorkId(item)===latest.id||
+  /* Si el vehículo agendado pasó a tarea, su UUID no cambia.
+     Respetar la selección azul anterior aunque haya cambiado el tipo. */
+  (latest.kind==='booking'&&item.kind==='job'&&item.record?.uuid===latest.workUuid));
+ return selected?atmFocusWorkId(selected):fallback;
 }
 /* Tarjeta no numerada: marcador de selección, sin insertar tareas adicionales. */
 function atmOtherStatus(owner,date){
@@ -1601,7 +1607,7 @@ else if(dialog.type==='newbooking'||dialog.type==='editbooking'){
  '<div id="bookingerror" class="alert" style="display:none"></div>'+
  '<div class="row">'+footer+'<button class="btn" type="submit">'+(a?'Guardar cambios':'Guardar agendamiento')+'</button></div></form>'+
  (a&&a.userId!=null?'<button class="btn note-cta" data-a="notebooking" data-id="'+a.id+'">🔔 Enviar nota al técnico de este vehículo</button>':'')+
-  (a&&a.userId!=null?'<button type="button" class="btn ghost" data-a="atm-booking-to-job-open" style="border-color:#b8d5c8;color:#0f6449">⇄ Convertir en tarea</button>':'')+
+  (a&&a.userId!=null&&a.uuid?'<button type="button" class="btn ghost" data-a="atm-booking-to-job-open" style="border-color:#b8d5c8;color:#0f6449">⇄ Convertir en tarea</button>':'')+
   (a?'<button class="btn ghost" style="border-color:#e5b7b0;color:#9c4037" data-a="askdeletebooking">Eliminar este agendamiento</button>':'');
 }
  else if(dialog.type==='atm-convert-booking'){
