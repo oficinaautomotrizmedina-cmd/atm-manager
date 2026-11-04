@@ -1601,8 +1601,22 @@ else if(dialog.type==='newbooking'||dialog.type==='editbooking'){
  '<div id="bookingerror" class="alert" style="display:none"></div>'+
  '<div class="row">'+footer+'<button class="btn" type="submit">'+(a?'Guardar cambios':'Guardar agendamiento')+'</button></div></form>'+
  (a&&a.userId!=null?'<button class="btn note-cta" data-a="notebooking" data-id="'+a.id+'">🔔 Enviar nota al técnico de este vehículo</button>':'')+
+  (a&&a.userId!=null?'<button type="button" class="btn ghost" data-a="atm-booking-to-job-open" style="border-color:#b8d5c8;color:#0f6449">⇄ Convertir en tarea</button>':'')+
   (a?'<button class="btn ghost" style="border-color:#e5b7b0;color:#9c4037" data-a="askdeletebooking">Eliminar este agendamiento</button>':'');
 }
+ else if(dialog.type==='atm-convert-booking'){
+  const b=appointments.find(x=>x.id===dialog.id),who=user(b?.userId);
+  h='<div class="row"><h3>Convertir vehículo en tarea</h3><span style="font-size:25px">↻</span></div>'+
+   '<div class="notice">'+(b?'<strong>'+esc(b.vehicle)+'</strong><p class="sub">'+esc(who?.name||'Técnico')+' · '+esc(fmt(b.day))+'</p>':
+    'El agendamiento ya no está disponible en la lista.')+'</div>'+
+   '<p class="sub">Este mismo registro pasará a ser una tarea normal, sin horario de recepción. Se conservarán el título, las indicaciones, el técnico, la fecha, el orden y los vínculos de bitácoras, seguimientos y referencias anteriores.</p>'+
+   '<p class="sub">No se modificará el agendamiento de otras fechas. Después podrás editar la tarea. Si cambiaste datos en el formulario anterior, guardalos antes de convertir.</p>'+
+   (dialog.error?'<div class="alert">'+esc(dialog.error)+'</div>':'')+
+   '<div class="row"><button type="button" class="btn ghost" data-a="close" '+(dialog.processing?'disabled':'')+'>Cancelar</button>'+
+   '<button type="button" class="btn" data-a="'+(dialog.saved?'atm-convert-booking-refresh':'atm-convert-booking-confirm')+'" '+
+   (dialog.processing||(!b&&!dialog.saved)?'disabled':'')+'>'+
+   (dialog.processing?'Procesando…':dialog.saved?'Actualizar y abrir tarea':'Confirmar conversión')+'</button></div>';
+ }
  else if(dialog.type==='adminnote'){
   const record=atmTaskNoteRecord(dialog.taskType,dialog.taskId),owner=user(record?.userId);
   h=record&&owner?'<div class="row"><h3>Notificar al técnico</h3><button type="button" class="btn ghost" data-a="close" aria-label="Cancelar notificación">×</button></div>'+
@@ -2276,6 +2290,67 @@ async function transfer(move){
  }
 }
 
+/* Conversión sin eliminar ni duplicar registros: conservar el UUID de work_item.
+   Bitácoras, seguimientos, avisos y referencias siguen vinculados a ese mismo UUID. */
+async function atmConvertBookingToTask(){
+ const page=dialog;
+ if(me?.role!=='admin'||page?.type!=='atm-convert-booking'||page.processing||
+    !cloud.sb||!me?.uuid)return;
+ const source=appointments.find(x=>x.id===page.id);
+ const uuid=page.workUuid||source?.uuid,oldDay=page.workDay||source?.day;
+ const actor=me.uuid;
+ if(!uuid||!oldDay||(!page.saved&&(!source||source.userId==null))){
+  page.error='Este vehículo no tiene un técnico asignado o ya no está disponible.';
+  overlay.innerHTML=modalHTML();return;
+ }
+ if(cloud.busy||cloud.loading||cloud.retryPaused||cloud.expiring||
+   (!page.saved&&(!cloud.ready||atmReadOutbox(actor).length||
+    draftSignature()!==cloud.revision))){
+  page.error='Hay cambios pendientes de sincronizar. Guardá los cambios y actualizá antes de convertir.';
+  overlay.innerHTML=modalHTML();return;
+ }
+ page.error='';page.processing=true;page.workUuid=uuid;page.workDay=oldDay;
+ overlay.innerHTML=modalHTML();
+ try{
+  if(!page.saved){
+   const {data:session,error:sessionError}=await cloud.sb.auth.getSession();
+   if(sessionError||session?.session?.user?.id!==actor)
+    throw new Error('La sesión no está confirmada. Ingresá nuevamente antes de convertir.');
+   const assignee=uuidFor(source.userId);
+   if(!assignee)throw new Error('No se encontró el técnico asignado al vehículo.');
+   cloud.busy=true;
+   const {data,error:writeError}=await cloud.sb.from('atm_work_items')
+    .update({kind:'job',reception_start:null,reception_end:null})
+    .eq('id',uuid).eq('kind','booking').eq('work_day',oldDay)
+    .eq('assigned_to',assignee).select('id,kind').maybeSingle();
+   if(writeError)throw writeError;
+   if(!data||data.id!==uuid||data.kind!=='job')
+    throw new Error('El agendamiento cambió en el servidor. Actualizá antes de convertir.');
+   page.saved=true;
+   /* Cambiar el identificador local numerado a la serie de tareas.
+      Conservar el UUID remoto para que el historial siga vinculado. */
+   cloud.workUiIds.set(uuid,{id:nextJob++,kind:'job'});
+  }
+  cloud.busy=false;cloud.ready=false;
+  const loaded=await cloudLoad();
+  if(!loaded||!cloud.ready)
+   throw new Error('La conversión quedó guardada, pero falta recargar el calendario.');
+  const task=jobs.find(j=>j.uuid===uuid&&j.day===oldDay);
+  if(!task)
+   throw new Error('La conversión quedó guardada, pero la nueva tarea todavía no aparece.');
+  day=oldDay;week=oldDay;page.processing=false;
+  if(dialog===page)showDialog({type:'editjob',id:task.id});
+  notify('Convertido en tarea. Bitácoras y referencias conservadas.');
+ }catch(e){
+  console.warn('Conversión de agendamiento a tarea:',e);
+  page.error=String(e?.message||'No se pudo convertir el vehículo.');
+  if(page.saved)page.error+=' Utilizá «Actualizar y abrir tarea»; no repitas la conversión.';
+ }finally{
+  cloud.busy=false;page.processing=false;
+  if(dialog===page)overlay.innerHTML=modalHTML();
+ }
+}
+
 /* Eliminar exclusivamente las bitácoras copiadas junto a la programación.
    Nunca incluir bitácoras originales o nuevas del técnico en esta selección. */
 function atmCopiedLogsForRemoval(date,scope,workId=null,workKind='job'){
@@ -2942,7 +3017,17 @@ if(a==='atm-admin-edit-from-note'&&me?.role==='admin'&&dialog?.type==='adminnote
  else if(type==='standalone')atmOpenStandaloneEditor(id);
  return;
 }
-if(a==='editbooking'){const ap=appointments.find(x=>x.id===Number(b.dataset.booking));if(ap){day=ap.day;week=ap.day;showDialog({type:'editbooking',id:ap.id})}return}if(a==='askdeletebooking'){showDialog({type:'deleteBooking',id:dialog.id});return}if(a==='confirmdeletebooking'){removeStuff();return}if(a==='atm-edit-standalone'){
+if(a==='editbooking'){const ap=appointments.find(x=>x.id===Number(b.dataset.booking));if(ap){day=ap.day;week=ap.day;showDialog({type:'editbooking',id:ap.id})}return}
+if(a==='atm-booking-to-job-open'&&me?.role==='admin'&&dialog?.type==='editbooking'){
+ const ap=appointments.find(x=>x.id===dialog.id);
+ if(ap?.uuid&&ap.userId!=null)showDialog({type:'atm-convert-booking',id:ap.id});
+ return;
+}
+if((a==='atm-convert-booking-confirm'||a==='atm-convert-booking-refresh')&&
+ me?.role==='admin'&&dialog?.type==='atm-convert-booking'){
+ atmConvertBookingToTask();return;
+}
+if(a==='askdeletebooking'){showDialog({type:'deleteBooking',id:dialog.id});return}if(a==='confirmdeletebooking'){removeStuff();return}if(a==='atm-edit-standalone'){
  if(me?.role!=='admin')return;
  atmOpenStandaloneEditor(b.dataset.logUuid);return;
 }
