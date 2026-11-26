@@ -131,5 +131,4 @@ begin
    raise exception 'Los registros todavía existen. Se cancela el borrado';
  end if;
  return jsonb_build_object('ok',true,'deleted',true,'count',v_deleted,'ids',to_jsonb(v_actual));
-end;$function$
-
+end;$function$;
