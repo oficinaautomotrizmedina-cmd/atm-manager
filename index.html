@@ -4343,7 +4343,7 @@ function atmDeadlineMetrics(r,now){
 function atmDeadlineColor(p){return p<=25?'#159447':p<=50?'#2475d5':p<=75?'#efbe19':'#d43c35'}
 function atmDeadlineLocal(ms){return new Date(ms-21600000).toISOString()}
 function atmDeadlineParts(v){
- const d=new Date(v),date=new Intl.DateTimeFormat('es-SV',{timeZone:'America/El_Salvador',weekday:'long',day:'numeric',month:'long'}).format(d);
+ const d=new Date(v),parts=Object.fromEntries(new Intl.DateTimeFormat('es-SV',{timeZone:'America/El_Salvador',weekday:'long',day:'numeric',month:'long'}).formatToParts(d).map(p=>[p.type,p.value])),date=parts.weekday+' '+parts.day+' de '+parts.month;
  return {day:date.charAt(0).toUpperCase()+date.slice(1),time:new Intl.DateTimeFormat('es-SV',{timeZone:'America/El_Salvador',hour:'numeric',minute:'2-digit',hour12:true}).format(d)};
 }
 function atmDeadlineLabel(v){const p=atmDeadlineParts(v);return p.day+' · '+p.time}
