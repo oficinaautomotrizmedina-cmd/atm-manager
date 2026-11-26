@@ -1992,6 +1992,11 @@ function syncHistory(replace=false){
 }
 window.addEventListener('popstate',e=>{
  if(!me)return;
+ // Keep the in-flight vehicle request alive even if Android Back is pressed.
+ if(dialog?.type==='atm-employee-vehicle'&&dialog.saving){
+  const current=snapshotState();history.pushState(current,'');
+  lastHistoryJSON=JSON.stringify(current);historyBooted=true;historyRoute=navRoute();return;
+ }
  const previous=e.state?.atmManager&&!e.state.atmRoot;
  const stale=previous&&(Number(e.state.atmHistoryGroup??0)!==historyGroup||e.state.meId!==me.id);
  const home={...snapshotState(),tab:'calendar',thread:null,employee:null,dialog:null,ctx:null,draft:''};
@@ -2107,6 +2112,8 @@ async function atmSubmitEmployeeVehicle(form){
  }
 }
 root.addEventListener('click',e=>{
+ // Do not let tab/account navigation change local state during this write.
+ if(dialog?.type==='atm-employee-vehicle'&&dialog.saving){e.preventDefault();e.stopImmediatePropagation();return;}
  const b=e.target.closest('[data-a="atm-employee-add-vehicle"]');
  if(!b)return;e.preventDefault();e.stopImmediatePropagation();atmOpenEmployeeVehicle();
 },true);
