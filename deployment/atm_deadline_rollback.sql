@@ -40,8 +40,7 @@ begin
    raise exception 'Los registros todavía existen. Se cancela el borrado';
  end if;
  return jsonb_build_object('ok',true,'deleted',true,'count',v_deleted,'ids',to_jsonb(v_actual));
-end;$function$
-
+end;$function$;
 drop function if exists public.atm_set_task_deadline(uuid,timestamptz,timestamptz);
 drop function if exists public.atm_reactivate_task(uuid,timestamptz);
 drop function if exists atm_deadline_private.guard_notice();
