@@ -415,6 +415,8 @@
 #app .atm-deadline[data-expired="1"] .atm-deadline-pie{background:#ae453a}
 #app .atm-deadline[data-expired="1"] .atm-deadline-copy>small{color:#9b3228}
 #app .atm-deadline-action{padding:7px 10px;min-height:33px;font-size:11px;border-radius:8px;font-weight:800}
+#app .atm-employee-vehicle-warning{display:flex;gap:8px;align-items:flex-start;color:#866421;font-size:12px;line-height:1.45}
+#app .atm-employee-vehicle-warning>span:first-child{flex-shrink:0;font-size:15px}
 #app .atm-pause-symbol{display:block;width:24px;height:24px}
 #app .atm-pause-action{width:100%;margin-top:6px}
 #app .atm-pause-action.ghost{color:#946117;border-color:#e3c58f;background:#fff5e0}
@@ -1340,7 +1342,7 @@ function logsHTML(){
 function notify(t){const n=root.querySelector('#toast');n.textContent=t;n.style.display='block';clearTimeout(toastTimer);toastTimer=setTimeout(()=>n.style.display='none',2600)}
 function heading(t,k){return '<div>'+(k?'<div class="overline">'+esc(k)+'</div>':'')+'<h2 class="ttl">'+esc(t)+'</h2></div>'}
 function showDialog(o){dialog=o;overlay.innerHTML=modalHTML();syncHistory();}
-function closeDialog(){atmClockDismiss();const wasOpen=!!dialog;dialog=null;overlay.innerHTML='';if(wasOpen&&historyBooted&&!suppressHistory)syncHistory(true);}
+function closeDialog(){if(dialog?.type==='atm-employee-vehicle'&&dialog.saving)return;atmClockDismiss();const wasOpen=!!dialog;dialog=null;overlay.innerHTML='';if(wasOpen&&historyBooted&&!suppressHistory)syncHistory(true);}
 function doLogin(u,p){return cloudLogin(u,p)}
 function logout(){me=null;tab='calendar';employee=null;thread=null;ctx=null;draft='';closeDialog();saveDemo();render()}
 function atmRestoreViewHTML(){return '<div role="status" aria-live="polite" style="padding:30px 20px;text-align:center;color:#19513a;font-size:15px">Recuperando sesión de ATM Manager…</div>'}
@@ -1383,7 +1385,7 @@ function calendarHTML(){
  const manager=me.role!=='employee',scope=manager?filter:me.id,groups=manager?(filter==='all'?staff():filter==='none'?[]:[user(filter)].filter(Boolean)):[me];
  const countBookings=bookingsDay(day,scope).length,countTasks=onDay(day,scope).length;
  return '<div class="page">'+heading('Calendario',me.role==='admin'?'':manager?'PROGRAMACIÓN GENERAL':'MIS ACTIVIDADES')+
- (me.role==='admin'?'<button class="agenda-cta" data-a="newbooking"><span style="font-size:20px;line-height:1">＋</span> Agendar vehículo</button>'+calendarNewsHTML():'')+
+ (me.role==='admin'?'<button class="agenda-cta" data-a="newbooking"><span style="font-size:20px;line-height:1">＋</span> Agendar vehículo</button>'+calendarNewsHTML():atmEmployeeCanAddVehicle()?'<button type="button" class="agenda-cta" data-a="atm-employee-add-vehicle"><span style="font-size:20px;line-height:1">＋</span> Agregar vehículo</button>':'')+
  (me.role==='admin'?'':(totalUnread()?'<button class="incoming-notice" data-a="gotonotices">🔔 '+totalUnread()+' aviso'+(totalUnread()===1?'':'s')+' nuevo'+(totalUnread()===1?'':'s')+' · Ver en IA Chat ›</button>':'')+'<div class="agenda-legend"><span class="legend-chip"><i class="legend-dot red"></i>Garantía / Alta</span><span class="legend-chip"><i class="legend-dot yellow"></i>Nivel técnico</span><span class="legend-chip"><i class="legend-dot green"></i>Nivel ingeniería</span></div>')+
  calWeek(scope)+
  (manager?'<label class="field">Mostrar calendario de<select id="filter"><option value="all">Todos los empleados</option>'+(me.role==='admin'?'<option value="none" '+(filter==='none'?'selected':'')+'>—</option>':'')+staff().map(u=>'<option value="'+u.id+'" '+(String(filter)===String(u.id)?'selected':'')+'>'+esc(u.name)+'</option>').join('')+'</select></label>':'')+
@@ -1757,7 +1759,7 @@ else if(dialog.type==='newjob'||dialog.type==='editjob'){
  const targetEmployee=j?.userId??newSource?.employeeId??employee,targetDay=j?.day??newSource?.workDay??day;
  h='<h3>'+(j||newSource?'Editar tarea':'Nueva tarea')+'</h3><div class="sub">'+esc(user(targetEmployee)?.name||'')+' · '+esc(fmt(targetDay))+'</div>'+
  '<form id="jobform" class="stack"><label class="field">Vehículo o referencia<input name="title" required value="'+esc(j?.title||newSource?.vehicle||'')+'" placeholder="Nissan Versa"></label>'+
- '<label class="field">Descripción<textarea name="detail"'+(newSource?'':' required')+'>'+esc(j?.detail||'')+'</textarea></label>'+(me?.role==='admin'?'<label class="atm-general-check"><input type="checkbox" name="general" '+(j?.atmIsGeneral?'checked':'')+'> <span>Tarea general del taller</span></label>':'')+'<div class="row">'+footer+'<button class="btn">Guardar</button></div></form>'+
+ '<label class="field">Descripción<textarea name="detail"'+(newSource||j&&!j.detail?'':' required')+'>'+esc(j?.detail||'')+'</textarea></label>'+(me?.role==='admin'?'<label class="atm-general-check"><input type="checkbox" name="general" '+(j?.atmIsGeneral?'checked':'')+'> <span>Tarea general del taller</span></label>':'')+'<div class="row">'+footer+'<button class="btn">Guardar</button></div></form>'+
  (j?'<button class="btn note-cta" data-a="notejob" data-id="'+j.id+'">🔔 Enviar nota al técnico de esta actividad</button>':'')+
   (newSource&&me?.role==='admin'&&atmStandaloneDeletionTarget(newSource.uuid)?'<button type="button" class="btn ghost" style="border-color:#e5b7b0;color:#9c4037" data-a="atm-delete-standalone-open">Eliminar esta tarea</button>':'');
 }
@@ -1861,6 +1863,15 @@ else if(dialog.type==='logeditor'){
  '<textarea name="entry" id="atm-log-text" rows="6" minlength="1" maxlength="8000" required placeholder="'+(isFollowup?'Describí el avance o seguimiento del vehículo…':'Escribí los trabajos realizados…')+'">'+esc(draft)+'</textarea></label>'+
  '<div class="row">'+(isFollowup?'<button type="button" class="btn ghost" data-a="atm-log-editor-cancel">Cancelar</button>':'<button type="button" class="btn ghost" data-a="atm-log-editor-draft">Guardar borrador</button>')+
  '<button class="btn" type="submit">'+(isFollowup?'Guardar seguimiento':'Registrar bitácora')+'</button></div></form>';
+}
+else if(dialog.type==='atm-employee-vehicle'){
+ if(!atmEmployeeCanAddVehicle())return '';
+ const p=dialog,disabled=p.saving?' disabled':'';
+ h='<div class="row"><h3>Agregar vehículo</h3><button type="button" class="btn ghost" data-a="close" aria-label="Cerrar"'+disabled+'>×</button></div>'+
+ '<form class="stack" id="atm-employee-vehicle-form"><label class="field">Marca, modelo y año<input name="vehicle" maxlength="130" required placeholder="Ej. Mitsubishi Mighty 1998" autocomplete="off" value="'+esc(p.vehicle||'')+'"'+disabled+'></label>'+
+ '<div class="atm-employee-vehicle-warning"><span aria-hidden="true">⚠</span><span>Revisa bien la información. Una vez agregado el vehículo, no podrá ser eliminado.</span></div>'+
+ (p.error?'<div class="alert" role="alert">'+esc(p.error)+'</div>':'')+
+ '<div class="row"><button type="button" class="btn ghost" data-a="close"'+disabled+'>Cancelar</button><button type="submit" class="btn"'+disabled+'>'+(p.saving?'Guardando…':'Agregar')+'</button></div></form>';
 }
 else if(dialog.type==='newlogvehicle'){
  const isFollowup=dialog.category==='Informar avance';
@@ -1967,7 +1978,7 @@ let historyBooted=false,suppressHistory=false,lastHistoryJSON='',historyRoute=''
 let historyGroup=Number(history.state?.atmHistoryGroup)||0,highlightNotice=null,highlightWork=null;
 // Only genuine screen and modal transitions create browser history entries.
 function navRoute(){return JSON.stringify([tab,employee,thread,dialog?.type||null,dialog?.id??dialog?.taskId??null]);}
-function snapshotState(){return {atmManager:true,atmHistoryGroup:historyGroup,meId:me?.id||null,tab,employee,thread,day,week,filter,logDay,logWeek,logEmployee,logCategory,monthCursor,ctx,dialog:['created','logdelete'].includes(dialog?.type)?null:dialog,draft};}
+function snapshotState(){return {atmManager:true,atmHistoryGroup:historyGroup,meId:me?.id||null,tab,employee,thread,day,week,filter,logDay,logWeek,logEmployee,logCategory,monthCursor,ctx,dialog:['created','logdelete','atm-employee-vehicle'].includes(dialog?.type)?null:dialog,draft};}
 function restoreState(s){atmClockDismiss();if(!me)return;tab=s?.tab||'calendar';employee=s?.employee??null;thread=s?.thread??null;day=workday(s?.day||today);week=workday(s?.week||day);filter=s?.filter||'all';logDay=workday(s?.logDay||day);logWeek=workday(s?.logWeek||logDay);logEmployee=s?.logEmployee||'all';logCategory=reportKinds.some(x=>x.cat===s?.logCategory)?s.logCategory:'Registrar bitácora';monthCursor=s?.monthCursor||day.slice(0,7)+'-01';ctx=s?.ctx||null;dialog=s?.dialog||null;draft=s?.draft||'';error='';render();}
 function syncHistory(replace=false){
  const st=snapshotState(),json=JSON.stringify(st),route=navRoute();
@@ -2048,6 +2059,61 @@ if(tab==='chat'&&!cloud.retryPaused){const status=root.querySelector('#atm-cloud
 if(!suppressHistory){saveDemo();syncHistory()}}
 let atmManualRefreshInProgress=false;
 /* Actualizar desde GitHub Pages sin descartar tareas, mensajes o borradores. */
+function atmEmployeeCanAddVehicle(){return !!me?.uuid&&me.active!==false&&['employee','supervisor'].includes(me.role)}
+function atmOpenEmployeeVehicle(){
+ if(!atmEmployeeCanAddVehicle()||tab!=='calendar'||dialog)return;
+ if(!cloud.ready||cloud.loading||cloud.busy||cloud.expiring||cloud.retryPaused){notify('Esperá a que termine la sincronización.');return;}
+ showDialog({type:'atm-employee-vehicle',vehicle:'',requestId:crypto.randomUUID(),error:'',saving:false});
+}
+async function atmSubmitEmployeeVehicle(form){
+ const p=dialog,actor=me?.uuid,owner=me?.id;
+ if(p?.type!=='atm-employee-vehicle'||p.saving||!atmEmployeeCanAddVehicle())return;
+ const value=String(new FormData(form).get('vehicle')||'').trim().replace(/\s+/g,' ');
+ // Keep the same request UUID when retrying an uncertain server response.
+ if(p.submittedVehicle!==undefined&&p.submittedVehicle!==value)p.requestId=crypto.randomUUID();
+ p.vehicle=value;
+ const fail=message=>{if(dialog===p){p.error=message;p.saving=false;overlay.innerHTML=modalHTML();}};
+ if(!value||value.length>130){fail('Escribí marca, modelo y año válidos.');return;}
+ if(!cloud.ready||!cloud.sb||cloud.loading||cloud.busy||cloud.expiring||cloud.retryPaused||draftSignature()!==cloud.revision||atmReadOutbox(actor).length){
+  fail('Esperá a que se sincronicen los cambios pendientes y volvé a intentar.');return;
+ }
+ const existing=atmMatchingScheduledWork(atmActualToday(),owner,value);
+ if(existing&&existing.record.uuid!==p.requestId){fail('Este vehículo ya aparece en tus actividades de hoy.');return;}
+ if(standaloneLogs(owner,atmActualToday()).some(x=>atmVehicleKey(x.record.vehicle)===atmVehicleKey(value))){
+  fail('Este vehículo ya aparece en tus actividades de hoy.');return;
+ }
+ p.submittedVehicle=value;p.error='';p.saving=true;cloud.busy=true;overlay.innerHTML=modalHTML();
+ try{
+  const {data,error}=await cloud.sb.rpc('atm_employee_add_vehicle',{p_vehicle:value,p_request_id:p.requestId});
+  if(error)throw error;
+  const row=data?.work;
+  if(!data?.ok||!row||row.id!==p.requestId||row.kind!=='job'||row.assigned_to!==actor||row.created_by!==actor||!/^\d{4}-\d{2}-\d{2}$/.test(row.work_day)||atmVehicleKey(row.vehicle)!==atmVehicleKey(value))throw Error('El servidor no confirmó el vehículo.');
+  if(me?.uuid!==actor)return;
+  // Hydrate only the authoritative work row. No employee writes through cloudWrite.
+  const item=uiForWork(row);
+  const ix=jobs.findIndex(j=>j.uuid===item.uuid);
+  if(ix<0)jobs.push(item);else jobs[ix]=item;
+  cloud.lastWork.set(item.uuid,JSON.stringify(rowForWork(item,'job')));
+  cloud.revision=draftSignature();
+  p.saving=false;
+  if(dialog===p)closeDialog();
+  tab='calendar';day=row.work_day;week=row.work_day;employee=null;thread=null;
+  if(me.role==='supervisor')filter=String(owner);
+  highlightWork=item.uuid;render(true);notify('Vehículo agregado');
+ }catch(e){
+  fail(e?.code==='23505'?'Este vehículo ya aparece en tus actividades de hoy.':String(e?.message||'No se pudo confirmar el vehículo. Volvé a intentar.'));
+ }finally{
+  p.saving=false;cloud.busy=false;if(me?.uuid===actor)cloudRefresh();
+ }
+}
+root.addEventListener('click',e=>{
+ const b=e.target.closest('[data-a="atm-employee-add-vehicle"]');
+ if(!b)return;e.preventDefault();e.stopImmediatePropagation();atmOpenEmployeeVehicle();
+},true);
+root.addEventListener('submit',e=>{
+ if(e.target.id!=='atm-employee-vehicle-form')return;
+ e.preventDefault();e.stopImmediatePropagation();void atmSubmitEmployeeVehicle(e.target);
+},true);
 function atmManualRefreshRisk(){
  if(atmSessionBooting||cloud.busy||cloud.loading||cloud.skip||cloud.sessionRestoring||cloud.expiring||!cloud.ready)
   return {reason:'La aplicación todavía está cargando o sincronizando. Intentá cuando termine.',retry:false};
@@ -3129,7 +3195,7 @@ if(a==='atm-log-editor-draft'&&dialog?.type==='logeditor'&&me?.role!=='admin'&&c
  if(ctx.jobId!=null)drafts[me.id+':'+ctx.jobId]=draft;
  ctx=null;draft='';closeDialog();render();notify('Borrador de bitácora guardado');return;
 }
-if(a==='close'){if(dialog?.type==='logeditor'){ctx=null;draft='';closeDialog();render()}else closeDialog();return}if(a==='atm-reconnect-data'&&me){
+if(a==='close'){if(dialog?.type==='atm-employee-vehicle'&&dialog.saving)return;if(dialog?.type==='logeditor'){ctx=null;draft='';closeDialog();render()}else closeDialog();return}if(a==='atm-reconnect-data'&&me){
  if(cloud.busy||cloud.loading){notify('Conexión en curso.');return;}
  busyStatus('Recuperando información…');
  cloudLoad().then(ok=>{
@@ -3601,8 +3667,8 @@ if(f.id==='atm-log-editor'&&me?.role!=='admin'&&dialog?.type==='logeditor'&&
  if(f.id==='jobform'){
  if(me?.role!=='admin')return;
  const d=new FormData(f),title=String(d.get('title')||'').trim(),detail=String(d.get('detail')||'').trim(),atmIsGeneral=d.has('general');
- if(!title||(!detail&&!dialog.sourceLogUuid))return;
  const j=jobs.find(x=>x.id===dialog.id);
+ if(!title||(!detail&&!dialog.sourceLogUuid&&(!j||j.detail)))return;
  const source=dialog.sourceLogUuid?messages.find(m=>m.uuid===dialog.sourceLogUuid&&!m.copySourceNoticeId):null;
  if(dialog.sourceLogUuid&&!source&&!j){notify('La actividad ya no existe. Actualizá el calendario.');return;}
  if(j){j.title=title;j.detail=detail;j.atmIsGeneral=atmIsGeneral;}
