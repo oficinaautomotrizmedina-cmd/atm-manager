@@ -33,42 +33,38 @@ end; $function$
 ;
 
 -- Durable, private, event-driven completion notification outbox.
-create extension if not exists pg_net;
 create schema if not exists atm_completion_private;
 revoke all on schema atm_completion_private from public,anon,authenticated;
+create extension http with schema atm_completion_private;
 create table atm_completion_private.queue(
  event_id uuid primary key references public.atm_calendar_changes(id) on delete cascade,
  token uuid not null default gen_random_uuid(),
  attempts integer not null default 0,
  next_attempt timestamptz not null default clock_timestamp(),
  lease_until timestamptz,
- request_id bigint,
+ last_http_status integer,
  sent_subscriptions uuid[] not null default '{}'::uuid[],
  done boolean not null default false,
  created_at timestamptz not null default clock_timestamp()
 );
 alter table atm_completion_private.queue enable row level security;
 revoke all on atm_completion_private.queue from public,anon,authenticated;
--- pg_net was not installed previously; protect queue bodies containing per-event tokens.
-revoke all on schema net from public,anon,authenticated;
-revoke all on all tables in schema net from public,anon,authenticated;
-revoke execute on all functions in schema net from public,anon,authenticated;
+-- No network request in the completion transaction. Client dispatches immediately;
+-- private scheduled worker is independent of the employee's phone.
 create function atm_completion_private.dispatch(p_event uuid) returns void
 language plpgsql security definer set search_path='' as $$
-declare q atm_completion_private.queue%rowtype; request bigint;
+declare q atm_completion_private.queue%rowtype; result integer;
 begin
- select * into q from atm_completion_private.queue where event_id=p_event and not done and attempts<8 and next_attempt<=clock_timestamp() and (lease_until is null or lease_until<=clock_timestamp()) for update skip locked;
+ select * into q from atm_completion_private.queue where event_id=p_event and not done and attempts<8 and next_attempt<=clock_timestamp() and (lease_until is null or lease_until<=clock_timestamp());
  if not found then return;end if;
- -- Increment even if the asynchronous network request fails. Retry only pending events.
- update atm_completion_private.queue set attempts=attempts+1,next_attempt=clock_timestamp()+interval '5 minutes' where event_id=q.event_id;
+ -- Do not lock or update the queue before the worker calls back into this database.
  begin
-  request:=net.http_post(url:='https://mnwqvzhjkkoxcjxdolac.supabase.co/functions/v1/atm-push',
-   body:=jsonb_build_object('action','completion-worker','event_id',q.event_id,'token',q.token),timeout_milliseconds:=30000);
-  update atm_completion_private.queue set request_id=request where event_id=q.event_id;
- exception when others then
-  -- A transport failure must not undo the employee's completion.
-  null;
- end;
+  perform atm_completion_private.http_set_curlopt('CURLOPT_TIMEOUT_MS','10000');
+  perform atm_completion_private.http_set_curlopt('CURLOPT_CONNECTTIMEOUT_MS','4000');
+  select status into result from atm_completion_private.http_post('https://mnwqvzhjkkoxcjxdolac.supabase.co/functions/v1/atm-push',
+   jsonb_build_object('action','completion-worker','event_id',q.event_id,'token',q.token));
+ exception when others then result:=null;end;
+ update atm_completion_private.queue set attempts=attempts+1,next_attempt=clock_timestamp()+interval '2 minutes',last_http_status=result where event_id=q.event_id;
 end $$;
 revoke all on function atm_completion_private.dispatch(uuid) from public,anon,authenticated;
 create function atm_completion_private.enqueue() returns trigger
@@ -76,13 +72,24 @@ language plpgsql security definer set search_path='' as $$
 begin
  if new.change_type='finished' and new.atm_finish_actor is not null and new.atm_push_claimed_at is null then
   insert into atm_completion_private.queue(event_id) values(new.id) on conflict do nothing;
-  perform atm_completion_private.dispatch(new.id);
  end if;
  return new;
 end $$;
 revoke all on function atm_completion_private.enqueue() from public,anon,authenticated;
 create trigger atm_completion_push_enqueue after insert on public.atm_calendar_changes
 for each row when (new.change_type='finished') execute function atm_completion_private.enqueue();
+create function public.atm_completion_push_credentials(p_event uuid,p_actor uuid) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare q atm_completion_private.queue%rowtype;
+begin
+ if coalesce(auth.role(),'')<>'service_role' then raise exception 'Sin permiso' using errcode='42501';end if;
+ select qu.* into q from atm_completion_private.queue qu join public.atm_calendar_changes c on c.id=qu.event_id
+ where qu.event_id=p_event and c.change_type='finished' and c.atm_finish_actor=p_actor;
+ if not found then return null;end if;
+ return jsonb_build_object('token',q.token,'done',q.done);
+end $$;
+revoke all on function public.atm_completion_push_credentials(uuid,uuid) from public,anon,authenticated;
+grant execute on function public.atm_completion_push_credentials(uuid,uuid) to service_role;
 create function public.atm_completion_push_claim(p_event uuid,p_token uuid) returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare q atm_completion_private.queue%rowtype; c public.atm_calendar_changes%rowtype; lease timestamptz;
@@ -122,4 +129,4 @@ begin
  loop perform atm_completion_private.dispatch(id);end loop;
 end $$;
 revoke all on function atm_completion_private.retry_pending() from public,anon,authenticated;
-select cron.schedule('atm-completion-push-retry','*/5 * * * *','select atm_completion_private.retry_pending()');
+select cron.schedule('atm-completion-push-retry','* * * * *','select atm_completion_private.retry_pending()');
