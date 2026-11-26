@@ -746,6 +746,7 @@ function atmMarkActiveWork(dayKey,workId){
  if(!['job','booking','standalone'].includes(kind)||! /^[0-9a-f-]{36}$/i.test(uuid))return false;
  const item=displaySchedule(me.id,dayKey).find(x=>atmFocusWorkId(x)===workId);
  if(!item||atmActiveWorkId(me.id,dayKey)===workId)return false;
+ if(atmDeadlineBlocked(item.kind==='standalone'?null:item.record))return false;
  const vehicle=item.kind==='job'?item.record.title:item.record.vehicle;
  messages.push({
   uuid:crypto.randomUUID(),id:nextMsg++,employeeId:me.id,sender:me.id,
@@ -822,7 +823,9 @@ function atmFocusVehicleName(item){
 }
 function atmShowFollowupEditor(date,focus){
  if(!me||me.role==='admin'||date!==atmActualToday())return false;
- if(!atmFocusItemForEmployee(date,focus))return false;
+ const item=atmFocusItemForEmployee(date,focus);
+ if(!item)return false;
+ if(atmDeadlineBlocked(item.kind==='standalone'?null:item.record))return false;
  showDialog({type:'atm-followup-editor',day:date,focus});
  return true;
 }
@@ -830,6 +833,7 @@ function atmFocusLongPressed(date,focus){
  if(me?.role==='admin'||date!==atmActualToday())return false;
  const next=atmFocusItemForEmployee(date,focus);
  if(!next)return false;
+ if(atmDeadlineBlocked(next.kind==='standalone'?null:next.record))return false;
  const previousId=atmActiveWorkId(me.id,date);
  const previous=atmFocusItemForEmployee(date,previousId);
  if(previousId===ATM_OTHER_FOCUS){
@@ -846,6 +850,7 @@ function atmSaveChosenFollowup(date,focus,body){
  if(me?.role==='admin'||!me?.uuid||date!==atmActualToday())return false;
  const item=atmFocusItemForEmployee(date,focus),text=String(body||'').trim();
  if(!item||!text||text.length>8000)return false;
+ if(atmDeadlineBlocked(item.kind==='standalone'?null:item.record))return false;
  const record=item.record,kind=item.kind,vehicle=atmFocusVehicleName(item),
   taskId=kind==='standalone'?null:record.id,
   details=kind==='job'?record.detail:record.instructions||'',
@@ -968,7 +973,7 @@ function workWithLogsHTML(item,i,editable,draggable){
   (selectable?' data-atm-focus="'+esc(focus)+'" data-atm-focus-day="'+esc(record.day)+'"':'')+
   (adminSelectable?' data-atm-admin-focus="'+esc(focus)+'" data-atm-admin-owner="'+record.userId+
     '" data-atm-admin-day="'+esc(record.day)+'"':'')+
-  '>'+numberedCard+'</div>'+taskLogsHTML(item)+'</div>';
+  '>'+numberedCard+'</div>'+atmDeadlineCard(item)+taskLogsHTML(item)+'</div>';
 }
 const bookedFor=(id,d)=>appointments.filter(a=>a.userId===Number(id)&&a.day===d).sort((a,b)=>(a.order??9999)-(b.order??9999)||a.id-b.id);
 const pendingBookings=(d)=>appointments.filter(a=>a.userId===null&&a.day===d).sort((a,b)=>a.id-b.id);
@@ -1355,6 +1360,10 @@ function atmClockDismiss(){
  root.querySelector('#atm-clock-root')?.remove();
 }
 function atmClockOpen(field){
+ if(field==='deadline'&&me?.role==='admin'&&dialog?.type==='atm-deadline-admin'){
+  const raw=dialog.selectedTime||'17:00',h=Number(raw.slice(0,2));
+  atmClock={field,step:'hour',hour:h%12||12,minute:Number(raw.slice(3,5)),period:h>=12?'PM':'AM'};atmClockDraw();return;
+ }
  if(me?.role!=='admin'||!['newbooking','editbooking'].includes(dialog?.type)||!['start','end'].includes(field))return;
  const form=overlay.querySelector('#bookingform'),input=form?.elements.namedItem(field==='start'?'receptionStart':'receptionEnd');
  if(!input)return;
@@ -1409,6 +1418,12 @@ function atmClockSelect(value){
 function atmClockCommit(){
  if(!atmClock)return;
  const c=atmClock,form=overlay.querySelector('#bookingform');
+ if(c.field==='deadline'){
+  if(me?.role==='admin'&&dialog?.type==='atm-deadline-admin'){
+   dialog.selectedTime=String(c.hour%12+(c.period==='PM'?12:0)).padStart(2,'0')+':'+String(c.minute).padStart(2,'0');
+   dialog.error='';atmClockDismiss();overlay.innerHTML=modalHTML();return;
+  }atmClockDismiss();return;
+ }
  if(!form){atmClockDismiss();return}
  const h=(c.hour%12)+(c.period==='PM'?12:0);
  const value=String(h).padStart(2,'0')+':'+String(c.minute).padStart(2,'0');
@@ -1467,7 +1482,10 @@ document.addEventListener('keydown',e=>{
 
 function modalHTML(){if(!dialog)return '';let h='',sheet=false;
 const footer='<button class="btn ghost" data-a="close">Cancelar</button>';
-if(dialog.type==='accountmenu'){
+if(dialog.type==='atm-deadline-admin'||dialog.type==='atm-deadline-reactivate'){
+  h=atmDeadlineModal(dialog);
+ }
+ else if(dialog.type==='accountmenu'){
  h='<div class="row"><h3>Opciones del taller</h3><button class="btn ghost" data-a="close" aria-label="Cerrar menú">×</button></div>'+
 
  '<button class="opt" data-a="atm-push-enable"><span class="ico">🔔</span><span><strong>Activar notificaciones</strong><small>Registrar este teléfono para recibir avisos de chat</small></span></button>'+
@@ -1734,7 +1752,7 @@ else if(dialog.type==='atm-followup-editor'){
  h=item?'<div class="row"><h3>Registrar seguimiento</h3></div>'+
   '<div class="notice"><strong>🚘 '+esc(atmFocusVehicleName(item))+'</strong><div class="sub">'+esc(fmt(dialog.day))+'</div></div>'+
   '<form id="atm-followup-form" class="stack"><label class="field">Seguimiento del vehículo'+
-   '<textarea name="entry" rows="6" minlength="1" maxlength="8000" required placeholder="Escribí el avance o estado actual del vehículo…"></textarea></label>'+
+   '<textarea name="entry" rows="6" minlength="1" maxlength="8000" required placeholder="Escribí el avance o estado actual del vehículo…">'+esc(dialog.pendingEntry||'')+'</textarea></label>'+
    '<div class="row"><button type="button" class="btn ghost" data-a="close">Cancelar</button>'+
    '<button type="submit" class="btn">Guardar seguimiento</button></div></form>':
   '<div class="notice">El vehículo ya no está disponible para este día.</div>'+
@@ -2062,6 +2080,7 @@ window.addEventListener('focus',atmRepairBottomNavigation);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)atmRepairBottomNavigation();});
 function send(fromLogEditor=false){
  const text=draft.trim();if(!text||!me)return;
+ if(atmDeadlineBlocked(atmDeadlineFromReference(ctx)))return false;
  if(ctx?.category==='Registrar bitácora'&&(!fromLogEditor||me.role==='admin'||!ctx.vehicle||!ctx.workDay))return;
  const isAdmin=me.role==='admin',empId=isAdmin?thread:me.id;
  if(!empId)return;
@@ -2860,6 +2879,10 @@ async function atmLogGetPreview(page){
 }
 async function atmLogDeleteNow(page){
  if(!page?.preview?.ids?.length||dialog!==page||!me?.uuid||page.loading)return;
+ if(me.role!=='admin'){
+  const record=page.preview.ids.map(id=>atmDeadlineFromReference(logs.find(l=>l.uuid===id))).find(atmDeadlineExpired);
+  if(atmDeadlineBlocked(record))return;
+ }
  if(!cloud.ready||cloud.busy||cloud.loading||cloud.retryPaused||draftSignature()!==cloud.revision){
   page.error='Esperá a que los mensajes y los trabajos terminen de sincronizarse y volvé a consultar.';
   page.preview=null;overlay.innerHTML=modalHTML();return;
@@ -3010,6 +3033,7 @@ if(a==='atm-refresh-retry'&&me&&dialog?.type==='atm-refresh-blocked'){
 if(a==='atm-account-menu'){if(me)showDialog({type:'accountmenu'});return}if(a==='backcalendar'){tab='calendar';thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='logout'){logout();return}if(a==='openusers'){tab='users';employee=null;thread=null;ctx=null;draft='';closeDialog();render();return}if(a==='openlogs'){logDay=(tab==='calendar'?day:logDay);logWeek=logDay;logEmployee='all';logCategory='Registrar bitácora';tab='logs';thread=null;employee=null;ctx=null;draft='';closeDialog();render();return}if(a==='logsdate'){logDay=day;logWeek=day;logEmployee='all';logCategory='Registrar bitácora';tab='logs';closeDialog();render();return}if(a==='progressdate'&&me?.role==='admin'){logDay=day;logWeek=day;logEmployee='all';logCategory='Informar avance';tab='logs';closeDialog();render();return}if(a==='employee-logs'&&me?.role==='admin'&&typeof employee==='number'){logDay=day;logWeek=day;logEmployee=String(employee);logCategory='Registrar bitácora';tab='logs';employee=null;closeDialog();render();return}if(a==='logview'&&reportKinds.some(x=>x.cat===b.dataset.cat)){logCategory=b.dataset.cat;logSelected.clear();logSelectMode=false;logHoldDay=null;render();return}if(a==='logprev'||a==='lognext'){logDay=dayAdd(logDay,a==='logprev'?-7:7);logWeek=logDay;render();return}if(a==='logdate'){logDay=b.dataset.day;logWeek=logDay;render();return}if(a==='openlog'){const entry=logs.find(x=>x.id===Number(b.dataset.id));if(entry&&(me.role==='admin'||entry.employeeId===me.id))showDialog({type:'logdetail',id:entry.id,uuid:entry.uuid});return}
 if(a==='atm-edit-own-log'&&dialog?.type==='logdetail'){
  const l=logs.find(x=>x.uuid===b.dataset.uuid);
+ if(atmDeadlineBlocked(atmDeadlineFromReference(l)))return;
  if(atmCanEmployeeEditLog(l))showDialog({type:'atm-employee-log-editor',uuid:l.uuid,originalText:l.text,draftText:l.text,error:'',saving:false});
  return;
 }
@@ -3148,6 +3172,7 @@ if(a==='selectbooking'){const ap=appointments.find(x=>x.id===Number(b.dataset.bo
 async function atmSaveEmployeeLogEdit(form){
  const page=dialog,l=logs.find(x=>x.uuid===page?.uuid);
  const m=messages.find(x=>x.uuid===page?.uuid);
+ if(atmDeadlineBlocked(atmDeadlineFromReference(l),page))return;
  if(page?.type!=='atm-employee-log-editor'||page.saving||!atmCanEmployeeEditLog(l)||
     !m||m.text!==page.originalText)return;
  const value=String(new FormData(form).get('entry')||'').trim();
@@ -3406,7 +3431,9 @@ if(f.id==='atm-other-form'&&dialog?.type==='atm-other-editor'&&me?.role!=='admin
 }
 if(f.id==='atm-followup-form'){
  if(me?.role==='admin'||dialog?.type!=='atm-followup-editor')return;
- const saved=atmSaveChosenFollowup(dialog.day,dialog.focus,new FormData(f).get('entry'));
+ const entry=new FormData(f).get('entry'),item=atmFocusItemForEmployee(dialog.day,dialog.focus);
+ if(atmDeadlineBlocked(item?.kind==='standalone'?null:item?.record,{...dialog,pendingEntry:entry}))return;
+ const saved=atmSaveChosenFollowup(dialog.day,dialog.focus,entry);
  if(!saved)notify('No se pudo registrar el seguimiento. Revisá el vehículo y la fecha.');
  return;
 }
@@ -3415,6 +3442,7 @@ if(f.id==='atm-log-editor'&&me?.role!=='admin'&&dialog?.type==='logeditor'&&
    const category=ctx.category;
    draft=String(new FormData(f).get('entry')||'');
    if(!draft.trim()||draft.trim().length>8000)return;
+    if(atmDeadlineBlocked(atmDeadlineFromReference(ctx),{type:'logeditor'}))return;
    closeDialog();send(true);notify(category==='Informar avance'?'Seguimiento registrado':'Bitácora registrada');return;
   }
  if(f.id==='atm-new-log-vehicle'&&me?.role!=='admin'&&dialog?.type==='newlogvehicle'){
@@ -3466,7 +3494,7 @@ function loadUIReadState(){seen={};readBy={};drafts={};try{const d=JSON.parse(lo
 function localWorkRows(){return [...jobs.map(x=>({item:x,kind:'job'})),...appointments.map(x=>({item:x,kind:'booking'}))];}
 function rowForWork(x,kind){return {id:x.uuid,kind,vehicle:kind==='job'?x.title:x.vehicle,instructions:kind==='job'?x.detail:x.instructions,service_type:kind==='booking'?(x.serviceType||'Por definir'):'Por definir',service_other:kind==='booking'?(x.serviceOther||''):'',priority:kind==='booking'?(x.priority||'yellow'):'yellow',reception_start:kind==='booking'?(x.receptionStart||null):null,reception_end:kind==='booking'?(x.receptionEnd||null):null,work_day:x.day,assigned_to:uuidFor(x.userId),sort_order:x.order??null};}
 function uiForWork(row){const kind=row.kind,known=cloud.workUiIds.get(row.id);/* Si un vehículo cambió de booking a job, no reutilizar su número interno
-   de agendamiento: puede coincidir con el número de otra tarea. */const num=known?.kind===kind?known.id:(kind==='job'?nextJob++:nextAppointment++);cloud.workUiIds.set(row.id,{id:num,kind});const basic={uuid:row.id,userId:uiFor(row.assigned_to),day:row.work_day,order:row.sort_order??null};if(kind==='job')return {...basic,id:num,title:row.vehicle,detail:row.instructions||''};return {...basic,id:num,vehicle:row.vehicle,instructions:row.instructions||'',serviceType:row.service_type||'Por definir',serviceOther:row.service_other||'',priority:row.priority||'yellow',receptionStart:row.reception_start?String(row.reception_start).slice(0,5):null,receptionEnd:row.reception_end?String(row.reception_end).slice(0,5):null};}
+   de agendamiento: puede coincidir con el número de otra tarea. */const num=known?.kind===kind?known.id:(kind==='job'?nextJob++:nextAppointment++);cloud.workUiIds.set(row.id,{id:num,kind});const basic={uuid:row.id,userId:uiFor(row.assigned_to),day:row.work_day,order:row.sort_order??null,atmDueAt:row.atm_due_at||null,atmWindowStartedAt:row.atm_window_started_at||null,atmTokens:row.atm_tokens_remaining??null};if(kind==='job')return {...basic,id:num,title:row.vehicle,detail:row.instructions||''};return {...basic,id:num,vehicle:row.vehicle,instructions:row.instructions||'',serviceType:row.service_type||'Por definir',serviceOther:row.service_other||'',priority:row.priority||'yellow',receptionStart:row.reception_start?String(row.reception_start).slice(0,5):null,receptionEnd:row.reception_end?String(row.reception_end).slice(0,5):null};}
 const ATM_OUTBOX_PREFIX='atm_manager_pending_';
 function atmOutboxKey(id){return ATM_OUTBOX_PREFIX+id;}
 function atmReadOutbox(id){try{const rows=JSON.parse(localStorage.getItem(atmOutboxKey(id))||'[]');return Array.isArray(rows)?rows:[]}catch(_){return []}}
@@ -3722,6 +3750,7 @@ async function cloudLoad(){if(!cloud.sb||cloud.busy||cloud.loading||!me)return;
   cloudList('atm_calendar_changes','created_at')
  ]);
  if(readResult.error)throw readResult.error;
+ if(remoteWork.some(w=>w.atm_due_at))await atmDeadlineSyncClock(priorUuid);
  cloud.skip=true;
  const oldIds=cloud.userIds;
  users=profiles.map(p=>{let id=oldIds.get(p.user_id);if(!id){id=p.is_master?1:Math.max(nextUser,2);while([...oldIds.values()].includes(id))id++;oldIds.set(p.user_id,id);nextUser=Math.max(nextUser,id+1)}return {id,uuid:p.user_id,username:p.username,name:p.display_name,role:p.role,is_master:p.is_master,active:p.active}});
