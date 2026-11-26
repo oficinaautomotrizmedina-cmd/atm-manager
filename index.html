@@ -2102,7 +2102,7 @@ window.addEventListener('focus',atmRepairBottomNavigation);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)atmRepairBottomNavigation();});
 function send(fromLogEditor=false){
  const text=draft.trim();if(!text||!me)return;
- if(atmDeadlineBlocked(atmDeadlineFromReference(ctx)))return false;
+ if(!ctx?.replyTo&&atmDeadlineBlocked(atmDeadlineFromReference(ctx)))return false;
  if(ctx?.category==='Registrar bitácora'&&(!fromLogEditor||me.role==='admin'||!ctx.vehicle||!ctx.workDay))return;
  const isAdmin=me.role==='admin',empId=isAdmin?thread:me.id;
  if(!empId)return;
