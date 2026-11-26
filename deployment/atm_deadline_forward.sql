@@ -132,3 +132,11 @@ begin
  end if;
  return jsonb_build_object('ok',true,'deleted',true,'count',v_deleted,'ids',to_jsonb(v_actual));
 end;$function$;
+
+-- The client synchronizes time only when deadlines are visible, not each second.
+create function public.atm_deadline_clock()
+returns timestamptz language sql security invoker set search_path='' as $$
+ select clock_timestamp() where auth.uid() is not null and public.atm_is_active()
+$$;
+revoke all on function public.atm_deadline_clock() from public,anon,authenticated;
+grant execute on function public.atm_deadline_clock() to authenticated;
