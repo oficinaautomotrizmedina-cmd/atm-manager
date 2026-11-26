@@ -47,3 +47,5 @@ drop function if exists atm_deadline_private.guard_notice();
 drop function if exists atm_deadline_private.is_locked(uuid,uuid,date,text);
 drop schema if exists atm_deadline_private;
 -- Deadline columns remain inert, preserving data. Do not drop them without backup.
+
+drop function if exists public.atm_deadline_clock();
