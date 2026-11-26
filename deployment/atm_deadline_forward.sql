@@ -60,7 +60,7 @@ begin
  for item in select w.atm_due_at from public.atm_work_items w
    where w.assigned_to=p_actor and
    (w.id=p_work or (p_work is null and p_day is not null and p_vehicle is not null
-      and w.work_day=p_day and lower(btrim(w.vehicle))=lower(btrim(p_vehicle))))
+      and w.work_day=p_day and lower(btrim(regexp_replace(w.vehicle,'[[:space:]]+',' ','g')))=lower(btrim(regexp_replace(p_vehicle,'[[:space:]]+',' ','g')))))
    order by w.id for share
  loop
    if item.atm_due_at is not null and item.atm_due_at<=clock_timestamp() then return true; end if;
@@ -70,9 +70,20 @@ end; $$;
 revoke all on function atm_deadline_private.is_locked(uuid,uuid,date,text) from public,anon,authenticated;
 create function atm_deadline_private.guard_notice()
 returns trigger language plpgsql security definer set search_path = '' as $$
-declare actor uuid:=auth.uid();
+declare actor uuid:=auth.uid(); marker jsonb; focus_uuid uuid; prefix text:='[ATM_TAREA_ACTIVA_V1]';
 begin
  if actor is null or public.atm_is_admin() then return new; end if;
+ -- Internal focus notices normally have no work_item_id. Validate their real target.
+ if new.category='Registrar bitácora' and left(new.body,length(prefix))=prefix then
+   begin
+     marker:=substring(new.body from length(prefix)+1)::jsonb;
+     if marker->>'kind' in ('job','booking') then focus_uuid:=(marker->>'uuid')::uuid; end if;
+   exception when invalid_text_representation then focus_uuid:=null;
+   end;
+   if focus_uuid is not null and atm_deadline_private.is_locked(actor,focus_uuid,null,null) then
+     raise exception 'Tarea vencida. Reactivá la tarea' using errcode='42501';
+   end if;
+ end if;
  if tg_op='UPDATE' then
    if atm_deadline_private.is_locked(actor,old.work_item_id,old.work_day,old.vehicle_caption) then
      raise exception 'Tarea vencida. Reactivá la tarea' using errcode='42501';
