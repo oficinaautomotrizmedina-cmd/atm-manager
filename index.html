@@ -1753,7 +1753,8 @@ else if(dialog.type==='newjob'||dialog.type==='editjob'){
  h='<h3>'+(j||newSource?'Editar tarea':'Nueva tarea')+'</h3><div class="sub">'+esc(user(targetEmployee)?.name||'')+' · '+esc(fmt(targetDay))+'</div>'+
  '<form id="jobform" class="stack"><label class="field">Vehículo o referencia<input name="title" required value="'+esc(j?.title||newSource?.vehicle||'')+'" placeholder="Nissan Versa"></label>'+
  '<label class="field">Descripción<textarea name="detail"'+(newSource?'':' required')+'>'+esc(j?.detail||'')+'</textarea></label>'+(me?.role==='admin'?'<label class="atm-general-check"><input type="checkbox" name="general" '+(j?.atmIsGeneral?'checked':'')+'> <span>Tarea general del taller</span></label>':'')+'<div class="row">'+footer+'<button class="btn">Guardar</button></div></form>'+
- (j?'<button class="btn note-cta" data-a="notejob" data-id="'+j.id+'">🔔 Enviar nota al técnico de esta actividad</button>':'');
+ (j?'<button class="btn note-cta" data-a="notejob" data-id="'+j.id+'">🔔 Enviar nota al técnico de esta actividad</button>':'')+
+  (newSource&&me?.role==='admin'&&atmStandaloneDeletionTarget(newSource.uuid)?'<button type="button" class="btn ghost" style="border-color:#e5b7b0;color:#9c4037" data-a="atm-delete-standalone-open">Eliminar esta tarea</button>':'');
 }
 else if(dialog.type==='categories'){sheet=true;h='<div class="row"><h3>¿Qué querés comunicar?</h3><button class="btn ghost" data-a="close">×</button></div>'+opts.filter(o=>!['Registrar bitácora','Informar avance'].includes(o[0])).map(o=>'<button class="opt" data-a="category" data-cat="'+esc(o[0])+'"><span class="ico">'+o[2]+'</span><span class="grow"><strong>'+esc(o[0])+'</strong><small>'+esc(o[1])+'</small></span>›</button>').join('')}
 else if(dialog.type==='vehicles'){
@@ -1865,10 +1866,10 @@ else if(dialog.type==='newlogvehicle'){
 else if(dialog.type==='logdelete'){
  const d=dialog,count=Number(d.preview?.count||0);
  h='<div class="row"><h3>Borrar registros</h3><button type="button" class="btn ghost" data-a="close">×</button></div>'+
- '<div class="atm-cleanup-warning"><strong>'+(d.mode==='day'?'Eliminar registros del '+esc(fmt(d.day)):'Eliminar '+esc(d.label||'registros seleccionados'))+'</strong><p style="margin:6px 0 0">Es definitivo: estos registros y sus mensajes asociados se eliminarán también de Supabase y del chat. Los vehículos, tareas y otras fechas no se borrarán.</p></div>'+
+ '<div class="atm-cleanup-warning"><strong>'+(d.mode==='day'?'Eliminar registros del '+esc(fmt(d.day)):'Eliminar '+esc(d.label||'registros seleccionados'))+'</strong><p style="margin:6px 0 0">'+(d.standaloneUuid?'Se eliminará esta actividad independiente junto con sus seguimientos y bitácoras del día, también del chat. Es definitivo. Las demás tareas, vehículos y fechas no se modificarán.':'Es definitivo: estos registros y sus mensajes asociados se eliminarán también de Supabase y del chat. Los vehículos, tareas y otras fechas no se borrarán.')+'</p></div>'+
  (d.loading?'<p class="sub">Consultando Supabase…</p>':
  d.error?'<div class="alert">'+esc(d.error)+'</div><button type="button" class="btn ghost" data-a="atm-log-retry">Volver a consultar</button>':
- '<div class="atm-cleanup-preview"><strong>'+count+' registro'+(count===1?'':'s')+' encontrado'+(count===1?'':'s')+'</strong><div class="sub">'+(d.mode==='day'?'Sin importar los filtros de pantalla, según tus permisos.':'Únicamente de la categoría y el técnico seleccionados.')+'</div></div>'+
+ '<div class="atm-cleanup-preview"><strong>'+count+' registro'+(count===1?'':'s')+' encontrado'+(count===1?'':'s')+'</strong><div class="sub">'+(d.standaloneUuid?'Solo los registros de esta actividad, técnico y fecha.':d.mode==='day'?'Sin importar los filtros de pantalla, según tus permisos.':'Únicamente de la categoría y el técnico seleccionados.')+'</div></div>'+
  (count?'<label class="atm-log-delete-check"><input type="checkbox" id="atm-log-ack"> Comprendo que la eliminación es definitiva.</label><button type="button" class="btn red" data-a="atm-log-confirm-delete" disabled>🗑 Eliminar '+count+' registro'+(count===1?'':'s')+'</button>':'<p class="sub">Esta selección ya no contiene registros.</p>'))+
  '<button type="button" class="btn ghost" data-a="close">Cancelar</button>';
 }
@@ -2206,6 +2207,29 @@ function atmTaskNoteRecord(type,id){
  const m=messages.find(x=>x.uuid===id&&!x.copySourceNoticeId&&x.taskId==null&&
   ['Registrar bitácora','Informar avance'].includes(x.category)&&x.workDay&&x.employeeId!=null);
  return m?{userId:m.employeeId,day:m.workDay,vehicle:m.vehicle,id:null}:null;
+}
+/* La tarjeta independiente existe por sus registros originales; borrar
+   exclusivamente los UUID de esa tarjeta, nunca las referencias ni otras fechas. */
+function atmStandaloneDeletionTarget(uuid){
+ if(me?.role!=='admin'||!uuid||!cloud.lastNotice.has(uuid))return null;
+ const source=messages.find(m=>m.uuid===uuid&&!m.copySourceNoticeId&&m.taskId==null&&
+  ['Registrar bitácora','Informar avance'].includes(m.category)&&!atmIsFocusNotice(m));
+ if(!source||!source.workDay||source.employeeId==null||atmMatchingScheduledWork(source.workDay,source.employeeId,source.vehicle))return null;
+ const item=standaloneLogs(source.employeeId,source.workDay).find(x=>x.logs.some(l=>l.uuid===uuid));
+ if(!item?.logs?.length)return null;
+ const ids=[...new Set(item.logs.map(l=>l.uuid))];
+ if(ids.length>5000||ids.some(id=>!id||!cloud.lastNotice.has(id)||!messages.some(m=>m.uuid===id&&
+   m.employeeId===source.employeeId&&m.workDay===source.workDay&&m.taskId==null&&!m.copySourceNoticeId&&
+   !atmIsFocusNotice(m)&&['Registrar bitácora','Informar avance'].includes(m.category))))return null;
+ return {uuid,ids,vehicle:source.vehicle||item.record.vehicle,employeeId:source.employeeId,day:source.workDay};
+}
+function atmSameDeletionIds(a,b){
+ return Array.isArray(a)&&Array.isArray(b)&&a.length===b.length&&
+  new Set(a).size===a.length&&new Set(b).size===b.length&&b.every(id=>a.includes(id));
+}
+function atmValidateStandaloneDeletion(page){
+ const target=atmStandaloneDeletionTarget(page.standaloneUuid);
+ return !!target&&atmSameDeletionIds(target.ids,page.ids)&&target.employeeId===page.standaloneEmployee&&target.day===page.standaloneDay;
 }
 function atmOpenStandaloneEditor(uuid){
  const source=messages.find(m=>m.uuid===uuid&&['Registrar bitácora','Informar avance'].includes(m.category)&&
@@ -2942,12 +2966,13 @@ root.addEventListener('contextmenu',e=>{
   e.preventDefault();e.stopPropagation();atmLogShowDayTrash(button.dataset.day);
  }
 },true);
-async function atmLogAskDelete(mode,ids=[],date=null,label=''){
+async function atmLogAskDelete(mode,ids=[],date=null,label='',standalone=null){
  if(!me||!cloud.sb||!['day','ids'].includes(mode))return;
  const requestIds=mode==='ids'?[...new Set(ids)]:[];
  if(mode==='ids'&&!requestIds.length)return;
  const page={type:'logdelete',mode,ids:requestIds,day:mode==='day'?date:null,
-   preview:null,error:'',loading:true,label};
+   preview:null,error:'',loading:true,label,
+   ...(standalone?{standaloneUuid:standalone.uuid,standaloneEmployee:standalone.employeeId,standaloneDay:standalone.day}:{})};
  showDialog(page);
  await atmLogGetPreview(page);
 }
@@ -2956,10 +2981,12 @@ async function atmLogGetPreview(page){
  page.loading=true;page.error='';page.preview=null;overlay.innerHTML=modalHTML();
  try{
   if(!me?.uuid||!cloud.sb)throw new Error('No hay sesión válida.');
+  if(page.standaloneUuid&&!atmValidateStandaloneDeletion(page))throw new Error('La tarea cambió. Cerrá esta ventana y volvé a abrir la actividad.');
   const {data,error}=await cloud.sb.auth.getSession();
   if(error||!data?.session?.access_token||data.session.user?.id!==me.uuid)throw new Error('Tu sesión expiró. Ingresá nuevamente.');
   const response=await cloudAPI({action:'logs_preview',mode:page.mode,day:page.day,ids:page.ids},data.session.access_token);
   if(!response?.ok||!Array.isArray(response.ids)||response.count!==response.ids.length)throw new Error('Supabase no entregó una vista previa válida.');
+  if(page.standaloneUuid&&!atmSameDeletionIds(response.ids,page.ids))throw new Error('Los registros cambiaron. Cerrá esta ventana y revisá la tarea nuevamente.');
   page.preview=response;
  }catch(err){page.error=String(err.message||'No se pudieron revisar los registros.');}
  finally{
@@ -2969,6 +2996,7 @@ async function atmLogGetPreview(page){
 }
 async function atmLogDeleteNow(page){
  if(!page?.preview?.ids?.length||dialog!==page||!me?.uuid||page.loading)return;
+ if(page.standaloneUuid&&(!atmValidateStandaloneDeletion(page)||!atmSameDeletionIds(page.preview.ids,page.ids))){page.error='La tarea cambió. Cerrá esta ventana y volvé a abrir la actividad.';page.preview=null;overlay.innerHTML=modalHTML();return;}
  if(me.role!=='admin'){
   const record=page.preview.ids.map(id=>atmDeadlineFromReference(logs.find(l=>l.uuid===id))).find(atmTaskLocked);
   if(atmDeadlineBlocked(record))return;
@@ -2990,7 +3018,8 @@ async function atmLogDeleteNow(page){
     expected_ids:page.preview.ids,confirm:'ELIMINAR'
   },data.session.access_token);
   if(!response?.ok||response.deleted!==true||
-     response.count!==page.preview.count||!Array.isArray(response.ids))
+     response.count!==page.preview.count||!Array.isArray(response.ids)||
+     (page.standaloneUuid&&!atmSameDeletionIds(response.ids,page.ids)))
     throw new Error('No se recibió una confirmación completa del borrado.');
   const removed=new Set(response.ids);
   messages=messages.filter(m=>!removed.has(m.uuid));
@@ -3151,7 +3180,14 @@ if(a==='askdeletebooking'){showDialog({type:'deleteBooking',id:dialog.id});retur
  if(me?.role!=='admin')return;
  atmOpenStandaloneEditor(b.dataset.logUuid);return;
 }
-if(a==='newjob'){showDialog({type:'newjob'});return}if(a==='editjob'){if(me?.role==='admin'&&jobs.some(x=>x.id===Number(b.dataset.job)))showDialog({type:'editjob',id:Number(b.dataset.job)});return}if(a==='prev'||a==='next'){day=dayAdd(day,a==='prev'?-7:7);week=day;render();return}if(a==='date'){day=b.dataset.day;week=day;render();return}if(a==='employee'){employee=Number(b.dataset.id);render();return}if(a==='pending'){employee='pending';filter='all';render();return}if(a==='backemployee'){employee=null;render();return}if(a==='atm-followup-open'&&me?.role==='admin'){atmOpenUnreadFollowups(Number(b.dataset.id));return}if(a==='openchat'){thread=Number(b.dataset.id);ctx=null;draft='';adminAllowReply=false;render();atmRefreshChatOnEntry();return}if(a==='gotonotices'){tab='chat';thread=null;ctx=null;draft='';render();atmRefreshChatOnEntry();return}if(a==='atm-chat-restore-history'&&dialog?.type==='chatmenu'){atmRestoreChatHistory();return;}
+if(a==='atm-delete-standalone-open'){
+  if(me?.role!=='admin'||dialog?.type!=='newjob'||!dialog.sourceLogUuid)return;
+  const target=atmStandaloneDeletionTarget(dialog.sourceLogUuid);
+  if(!target){notify('La tarea cambió. Actualizá el calendario.');return;}
+  if(!cloud.ready||cloud.busy||cloud.loading||cloud.retryPaused||draftSignature()!==cloud.revision){notify('Primero deben terminar de sincronizarse los cambios pendientes.');return;}
+  atmLogAskDelete('ids',target.ids,null,'tarea '+target.vehicle+' · '+(user(target.employeeId)?.name||'Técnico')+' · '+fmt(target.day),target);return;
+ }
+ if(a==='newjob'){showDialog({type:'newjob'});return}if(a==='editjob'){if(me?.role==='admin'&&jobs.some(x=>x.id===Number(b.dataset.job)))showDialog({type:'editjob',id:Number(b.dataset.job)});return}if(a==='prev'||a==='next'){day=dayAdd(day,a==='prev'?-7:7);week=day;render();return}if(a==='date'){day=b.dataset.day;week=day;render();return}if(a==='employee'){employee=Number(b.dataset.id);render();return}if(a==='pending'){employee='pending';filter='all';render();return}if(a==='backemployee'){employee=null;render();return}if(a==='atm-followup-open'&&me?.role==='admin'){atmOpenUnreadFollowups(Number(b.dataset.id));return}if(a==='openchat'){thread=Number(b.dataset.id);ctx=null;draft='';adminAllowReply=false;render();atmRefreshChatOnEntry();return}if(a==='gotonotices'){tab='chat';thread=null;ctx=null;draft='';render();atmRefreshChatOnEntry();return}if(a==='atm-chat-restore-history'&&dialog?.type==='chatmenu'){atmRestoreChatHistory();return;}
 if(a==='atm-chat-edit'&&dialog?.type==='atm-chat-message-actions'&&me?.role==='admin'){
  const m=messages.find(x=>x.uuid===dialog.uuid);
  if(atmCanAdminManageChatMessage(m))
@@ -3563,6 +3599,7 @@ if(f.id==='atm-log-editor'&&me?.role!=='admin'&&dialog?.type==='logeditor'&&
  if(!title||(!detail&&!dialog.sourceLogUuid))return;
  const j=jobs.find(x=>x.id===dialog.id);
  const source=dialog.sourceLogUuid?messages.find(m=>m.uuid===dialog.sourceLogUuid&&!m.copySourceNoticeId):null;
+ if(dialog.sourceLogUuid&&!source&&!j){notify('La actividad ya no existe. Actualizá el calendario.');return;}
  if(j){j.title=title;j.detail=detail;j.atmIsGeneral=atmIsGeneral;}
  else if(source){
   const matching=atmMatchingScheduledWork(source.workDay,source.employeeId,source.vehicle);
