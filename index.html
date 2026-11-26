@@ -402,6 +402,28 @@
  margin-bottom:0!important;
  min-height:0;flex:1 1 0%;
 }
+
+/* Optional task deadline, independent of reception time. */
+#app .atm-deadline{display:flex;flex-direction:column;gap:6px;padding:9px 11px;margin-top:4px;border:1px solid #d7e5d9;border-radius:10px;background:#fff;color:#245039}
+#app .atm-deadline-row{display:flex;align-items:center;gap:9px}
+#app .atm-deadline-copy{flex:1;min-width:0}
+#app .atm-deadline-copy>small{display:block;color:#56735f;font-size:10px;font-weight:700}
+#app .atm-deadline-count{font-size:15px;font-weight:850;font-variant-numeric:tabular-nums;white-space:nowrap;letter-spacing:-.25px}
+#app .atm-deadline-date{font-size:10px;color:#526f5d}
+#app .atm-deadline-pie{width:38px;height:38px;flex:none;border-radius:50%;background:conic-gradient(#0b7658 var(--atm-elapsed,0%),#e5eee7 0);border:2px solid #f5f9f5;outline:1px solid #d5e6da}
+#app .atm-deadline[data-expired="1"]{border-color:#e5b7b0;background:#fff5f3;color:#9b3228}
+#app .atm-deadline[data-expired="1"] .atm-deadline-pie{background:#ae453a}
+#app .atm-deadline[data-expired="1"] .atm-deadline-copy>small{color:#9b3228}
+#app .atm-deadline-action{padding:7px 10px;min-height:33px;font-size:11px;border-radius:8px;font-weight:800}
+#app .atm-deadline-admin-empty{border:1px dashed #bcd6c3;color:#096a4d;background:white;align-self:flex-start;margin:3px 0;font-size:11px;padding:7px 10px;border-radius:8px;font-weight:800}
+#app .atm-deadline-calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+#app .atm-deadline-calendar>span{text-align:center;color:#537462;font-size:10px;padding:4px 0}
+#app .atm-deadline-calendar>button{border:1px solid #d6e6da;border-radius:8px;min-height:35px;background:#fff;color:#245039;font-size:13px;font-weight:750;padding:3px}
+#app .atm-deadline-calendar>button[aria-pressed="true"]{background:#086d53;color:white;border-color:#086d53}
+#app .atm-deadline-month{display:flex;justify-content:space-between;align-items:center;gap:8px}
+#app .atm-deadline-month strong{font-size:13px;text-transform:capitalize}
+#app .atm-deadline-clock-button{width:100%;display:flex;justify-content:space-between;align-items:center;font-size:14px}
+#app .atm-deadline [hidden]{display:none!important}
 </style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script><link href="./manifest.webmanifest" rel="manifest"/><meta content="#0e604d" name="theme-color"/></head><body><div id="app"><div class="header" id="head"></div><div class="content" id="main"></div><div class="nav" id="nav"></div><div id="atm-pull-refresh" class="atm-pull-indicator" role="status" aria-live="polite" aria-hidden="true"><span class="atm-pull-symbol">↓</span><span class="atm-pull-label">Deslizá para actualizar</span></div><div id="overlay"></div><div class="floattrash" id="trash">🗑</div><div class="toast" id="toast"></div></div>
 <script>
 (()=>{
@@ -3451,7 +3473,8 @@ if(f.id==='atm-log-editor'&&me?.role!=='admin'&&dialog?.type==='logeditor'&&
   if(!vehicle||vehicle.length>130||!['Registrar bitácora','Informar avance'].includes(category))return;
   // Reutilizar la asignación si ya existe: nunca crear otro registro independiente.
   const assigned=atmReportMatchingWork(me.id,vehicle);
-  if(assigned){
+   if(atmDeadlineBlocked(assigned?.record))return;
+   if(assigned){
    const record=assigned.record;
    ctx={category,vehicle:assigned.kind==='job'?record.title:record.vehicle,
     jobId:assigned.kind==='job'?record.id:'a'+record.id,taskType:assigned.kind,taskId:record.id,
@@ -4221,6 +4244,126 @@ window.atmCanApplyUpdate=()=>{
  if(!cloud.ready||draftSignature()!==cloud.revision||atmReadOutbox(me.uuid).length)return false;
  return true;
 };
+
+/* Deadline UI: server-owned fields, local countdown, no per-second request. */
+let atmDeadlineAnchor=null;
+function atmDeadlineNow(){return atmDeadlineAnchor?atmDeadlineAnchor.ms+(performance.now()-atmDeadlineAnchor.mono):Date.now()}
+function atmDeadlineAnchorTime(value,actor){const ms=Date.parse(value);if(Number.isFinite(ms))atmDeadlineAnchor={ms,mono:performance.now(),actor}}
+async function atmDeadlineSyncClock(actor){
+ if(atmDeadlineAnchor?.actor===actor&&performance.now()-atmDeadlineAnchor.mono<300000)return;
+ try{const {data,error}=await cloud.sb.rpc('atm_deadline_clock');if(!error&&data)atmDeadlineAnchorTime(data,actor)}
+ catch(e){console.warn('Deadline clock unavailable',e)}
+}
+function atmDeadlineRecord(uuid){return [...jobs,...appointments].find(x=>x.uuid===uuid)}
+function atmDeadlineFromReference(ref){
+ if(!ref||!me)return null;
+ const x=ref.taskType==='job'?jobs.find(j=>j.id===ref.taskId):ref.taskType==='booking'?appointments.find(a=>a.id===ref.taskId):null;
+ if(x)return x;
+ return ref.workDay&&ref.vehicle?atmMatchingScheduledWork(ref.workDay,ref.employeeId??me.id,ref.vehicle)?.record||null:null;
+}
+function atmDeadlineExpired(r){return !!r?.atmDueAt&&Date.parse(r.atmDueAt)<=atmDeadlineNow()}
+function atmDeadlineOwn(r){return !!me&&me.role!=='admin'&&r?.userId===me.id}
+function atmDeadlineBlocked(r,resume=null){
+ if(!atmDeadlineOwn(r)||!atmDeadlineExpired(r))return false;
+ if(dialog?.type!=='atm-deadline-reactivate')showDialog({type:'atm-deadline-reactivate',uuid:r.uuid,expected:r.atmDueAt,resume});
+ return true;
+}
+function atmDeadlineMetrics(r,now){
+ const end=Date.parse(r.atmDueAt),start=Date.parse(r.atmWindowStartedAt),left=Math.max(0,Math.ceil((end-now)/1000));
+ const pad=n=>String(n).padStart(2,'0');
+ return {expired:end<=now,count:pad(Math.floor(left/86400))+'d '+pad(Math.floor(left%86400/3600))+'h '+pad(Math.floor(left%3600/60))+'m '+pad(left%60)+'s',percent:Math.max(0,Math.min(100,Number.isFinite(start)&&end>start?100*(now-start)/(end-start):end<=now?100:0))};
+}
+function atmDeadlineLocal(ms){return new Date(ms-21600000).toISOString()}
+function atmDeadlineLabel(v){return new Intl.DateTimeFormat('es-SV',{timeZone:'America/El_Salvador',dateStyle:'medium',timeStyle:'short'}).format(new Date(v))}
+function atmDeadlineCard(item){
+ const r=item.record,admin=me?.role==='admin';
+ if(item.kind==='standalone'||!r.uuid||r.userId==null)return '';
+ if(!r.atmDueAt)return admin?'<button type="button" class="atm-deadline-admin-empty" data-atm-deadline-action="open" data-uuid="'+esc(r.uuid)+'">◷ Asignar tiempo límite</button>':'';
+ const m=atmDeadlineMetrics(r,atmDeadlineNow());
+ return '<div class="atm-deadline" data-atm-deadline-id="'+esc(r.uuid)+'" data-expired="'+(m.expired?'1':'0')+'"><div class="atm-deadline-row"><div class="atm-deadline-copy"><small data-atm-deadline-status>'+(m.expired?'Tiempo agotado':'Tiempo restante')+'</small><div class="atm-deadline-count" data-atm-deadline-count>'+m.count+'</div><div class="atm-deadline-date">'+esc(atmDeadlineLabel(r.atmDueAt))+'</div></div><div class="atm-deadline-pie" data-atm-deadline-pie role="img" aria-label="Tiempo transcurrido" style="--atm-elapsed:'+m.percent+'%"></div></div>'+
+ (admin?'<button type="button" class="btn ghost atm-deadline-action" data-atm-deadline-action="open" data-uuid="'+esc(r.uuid)+'">Ampliar tiempo</button>':atmDeadlineOwn(r)?'<button type="button" class="btn atm-deadline-action" data-atm-deadline-action="reactivate" data-uuid="'+esc(r.uuid)+'" '+(m.expired?'':'hidden')+' '+(r.atmTokens>0?'':'disabled')+'>'+(r.atmTokens>0?'Reactivar tarea':'Sin tokens disponibles')+'</button>':'')+'</div>';
+}
+function atmDeadlineTick(){
+ if(!me||!cloud.ready||document.hidden)return;
+ for(const el of main.querySelectorAll('[data-atm-deadline-id]')){
+  const r=atmDeadlineRecord(el.dataset.atmDeadlineId);if(!r?.atmDueAt)continue;
+  const m=atmDeadlineMetrics(r,atmDeadlineNow());el.dataset.expired=m.expired?'1':'0';
+  el.querySelector('[data-atm-deadline-count]').textContent=m.count;
+  el.querySelector('[data-atm-deadline-status]').textContent=m.expired?'Tiempo agotado':'Tiempo restante';
+  const pie=el.querySelector('[data-atm-deadline-pie]');pie.style.setProperty('--atm-elapsed',m.percent+'%');pie.setAttribute('aria-label',Math.floor(m.percent)+'% del tiempo transcurrido');
+  const b=el.querySelector('[data-atm-deadline-action="reactivate"]');if(b){b.hidden=!m.expired;b.disabled=!(r.atmTokens>0)}
+ }
+}
+function atmDeadlineOpenAdmin(r){
+ if(me?.role!=='admin'||!r?.uuid||r.userId==null)return;
+ const suggested=atmDeadlineLocal(Math.max(atmDeadlineNow(),Date.parse(r.atmDueAt)||0)+3600000);
+ showDialog({type:'atm-deadline-admin',uuid:r.uuid,expected:r.atmDueAt||null,selectedDate:suggested.slice(0,10),selectedTime:suggested.slice(11,16),month:suggested.slice(0,7),error:'',saving:false});
+}
+function atmDeadlineModal(p){
+ const r=atmDeadlineRecord(p.uuid),cancel='<button type="button" class="btn ghost" data-atm-deadline-action="cancel" '+(p.saving?'disabled':'')+'>Cancelar</button>';
+ if(!r)return '<h3>Tarea no disponible</h3>'+cancel;
+ const error=p.error?'<div class="alert">'+esc(p.error)+'</div>':'';
+ if(p.type==='atm-deadline-reactivate'){
+  if(!atmDeadlineOwn(r))return '<h3>Tarea no disponible</h3>'+cancel;
+  return '<h3>'+(r.atmTokens>0?'¿Estás seguro de que deseas reactivar la tarea?':'Tarea bloqueada')+'</h3><div class="sub">'+esc(r.title||r.vehicle)+'</div><div class="notice">Tokens disponibles: <strong>'+Number(r.atmTokens||0)+' de 2</strong></div>'+error+'<div class="row">'+cancel+(r.atmTokens>0?'<button type="button" class="btn" data-atm-deadline-action="confirm" '+(p.saving?'disabled':'')+'>'+(p.saving?'Guardando…':'Reactivar')+'</button>':'')+'</div>';
+ }
+ if(me?.role!=='admin')return '<h3>Sin permiso</h3>'+cancel;
+ const month=new Date(p.month+'-01T12:00:00Z'),y=month.getUTCFullYear(),m=month.getUTCMonth(),days=new Date(Date.UTC(y,m+1,0)).getUTCDate(),first=(month.getUTCDay()+6)%7;
+ const minimum=atmDeadlineLocal(atmDeadlineNow()).slice(0,10);
+ let cal=['L','M','X','J','V','S','D'].map(x=>'<span>'+x+'</span>').join('')+'<span></span>'.repeat(first);
+ for(let d=1;d<=days;d++){
+  const key=p.month+'-'+String(d).padStart(2,'0');
+  cal+='<button type="button" aria-pressed="'+(key===p.selectedDate)+'" data-atm-deadline-action="date" data-day="'+key+'" '+(p.saving||key<minimum?'disabled':'')+'>'+d+'</button>';
+ }
+ return '<h3>Tiempo límite</h3><div class="sub">'+esc(r.title||r.vehicle)+'</div>'+(r.atmDueAt?'<div class="notice">Plazo actual: '+esc(atmDeadlineLabel(r.atmDueAt))+'</div>':'')+
+ '<div class="atm-deadline-month"><button type="button" class="arw" data-atm-deadline-action="month" data-delta="-1" aria-label="Mes anterior" '+(p.saving?'disabled':'')+'>‹</button><strong>'+esc(month.toLocaleDateString('es-SV',{timeZone:'UTC',month:'long',year:'numeric'}))+'</strong><button type="button" class="arw" data-atm-deadline-action="month" data-delta="1" aria-label="Mes siguiente" '+(p.saving?'disabled':'')+'>›</button></div><div class="atm-deadline-calendar">'+cal+'</div><label class="field">Fecha seleccionada: '+esc(fmt(p.selectedDate))+'</label><button type="button" class="btn ghost atm-deadline-clock-button" data-a="atm-clock-open" data-field="deadline" '+(p.saving?'disabled':'')+'><span>🕗 Hora de finalización</span><strong>'+esc(receptionHour(p.selectedTime))+'</strong></button>'+error+'<div class="row">'+cancel+'<button type="button" class="btn" data-atm-deadline-action="confirm" '+(p.saving?'disabled':'')+'>'+(p.saving?'Guardando…':r.atmDueAt?'Ampliar tiempo':'Asignar tiempo')+'</button></div>';
+}
+async function atmDeadlineSubmit(p){
+ const r=atmDeadlineRecord(p.uuid);if(!r||p.saving||dialog!==p||!me)return;
+ const admin=p.type==='atm-deadline-admin',actor=me.uuid;
+ if(admin?me.role!=='admin':!atmDeadlineOwn(r))return;
+ if(!cloud.ready||cloud.busy||cloud.loading||cloud.retryPaused||cloud.expiring||!cloud.lastWork.has(r.uuid)||draftSignature()!==cloud.revision||atmReadOutbox(actor).length){p.error='Sincronizá los cambios pendientes antes de continuar.';overlay.innerHTML=modalHTML();return}
+ let due=null;
+ if(admin){const ms=Date.parse(p.selectedDate+'T'+p.selectedTime+':00-06:00');if(!Number.isFinite(ms)||ms<=atmDeadlineNow()||(r.atmDueAt&&ms<=Date.parse(r.atmDueAt))){p.error='Seleccioná una fecha y hora posteriores al plazo actual.';overlay.innerHTML=modalHTML();return}due=new Date(ms).toISOString()}
+ else if(!atmDeadlineExpired(r)||!(r.atmTokens>0)){p.error='La tarea cambió. Actualizá el calendario.';overlay.innerHTML=modalHTML();return}
+ p.saving=true;p.error='';cloud.busy=true;overlay.innerHTML=modalHTML();
+ try{
+  const args={p_work_id:r.uuid,p_expected_due_at:p.expected||null};if(admin)args.p_due_at=due;
+  const {data,error}=await cloud.sb.rpc(admin?'atm_set_task_deadline':'atm_reactivate_task',args);
+  if(error)throw error;
+  if(!data||data.id!==r.uuid||!data.due_at||!data.started_at||!Number.isInteger(data.tokens))throw Error('El servidor no confirmó el plazo.');
+  if(me?.uuid!==actor)return;
+  r.atmDueAt=data.due_at;r.atmWindowStartedAt=data.started_at;r.atmTokens=data.tokens;atmDeadlineAnchorTime(data.server_now,actor);
+  if(dialog===p){closeDialog();if(p.resume)showDialog(p.resume)}
+  render(true);notify(admin?'Tiempo asignado':'Token utilizado. Tarea activa. Tienes 4 horas adicionales.');
+ }catch(e){if(dialog===p){p.error=String(e?.message||'No se pudo confirmar la operación.');p.saving=false;overlay.innerHTML=modalHTML()}}
+ finally{cloud.busy=false;if(me?.uuid===actor)cloudRefresh()}
+}
+root.addEventListener('click',e=>{
+ const b=e.target.closest('[data-atm-deadline-action]');
+ if(b){
+  e.preventDefault();e.stopImmediatePropagation();if(b.disabled)return;
+  const action=b.dataset.atmDeadlineAction,p=dialog;
+  if(action==='open'){atmDeadlineOpenAdmin(atmDeadlineRecord(b.dataset.uuid));return}
+  if(action==='reactivate'){atmDeadlineBlocked(atmDeadlineRecord(b.dataset.uuid));return}
+  if(!p||!['atm-deadline-admin','atm-deadline-reactivate'].includes(p.type)||p.saving)return;
+  if(action==='cancel'){closeDialog();if(p.resume)showDialog(p.resume);return}
+  if(action==='confirm'){void atmDeadlineSubmit(p);return}
+  if(p.type!=='atm-deadline-admin'||me?.role!=='admin')return;
+  if(action==='month'){const d=new Date(p.month+'-01T12:00:00Z');d.setUTCMonth(d.getUTCMonth()+Number(b.dataset.delta));p.month=d.toISOString().slice(0,7)}
+  if(action==='date'){p.selectedDate=b.dataset.day;p.error=''}
+  overlay.innerHTML=modalHTML();return;
+ }
+ if(!me||me.role==='admin')return;
+ const action=e.target.closest('[data-a]'),work=e.target.closest('[data-work-uuid]');
+ let r=work?atmDeadlineRecord(work.dataset.workUuid):null;
+ if(action?.dataset.a==='selectcar')r=jobs.find(j=>j.id===Number(action.dataset.job));
+ if(action?.dataset.a==='selectbooking')r=appointments.find(a=>a.id===Number(action.dataset.booking));
+ if(action?.dataset.a==='select-standalone')r=atmMatchingScheduledWork(action.dataset.day,me.id,action.dataset.vehicle)?.record;
+ if(atmDeadlineBlocked(r)){e.preventDefault();e.stopImmediatePropagation()}
+},true);
+setInterval(atmDeadlineTick,1000);
+
 cloudInitialize();
 
 })();
