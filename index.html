@@ -424,6 +424,58 @@
 #app .atm-deadline-month strong{font-size:13px;text-transform:capitalize}
 #app .atm-deadline-clock-button{width:100%;display:flex;justify-content:space-between;align-items:center;font-size:14px}
 #app .atm-deadline [hidden]{display:none!important}
+
+/* Completion controls and integrated deadline: keep the original gesture surface. */
+#app .atm-focus-surface.atm-task-shell{position:relative;min-width:0;border:1px solid #d7e5d9;border-left:3px solid #91b7a0;border-radius:11px;background:#fff;transition:background .4s ease,border-color .4s ease}
+#app .atm-task-shell[data-kind="booking"]{border-left-width:5px}
+#app .atm-task-shell[data-priority="red"]{border-left-color:#d34e44;background:linear-gradient(90deg,#fff4f2 0,#fff 32%)}
+#app .atm-task-shell[data-priority="yellow"]{border-left-color:#dea724;background:linear-gradient(90deg,#fff9e9 0,#fff 32%)}
+#app .atm-task-shell[data-priority="green"]{border-left-color:#20976a;background:linear-gradient(90deg,#f0faf3 0,#fff 32%)}
+#app .atm-task-shell.atm-focus-active[data-state="active"]{border:2px solid #2875d0;background:#e4efff;box-shadow:0 0 0 1px rgba(40,117,208,.19)}
+#app .atm-focus-surface.atm-task-shell>.item,#app .atm-focus-surface.atm-task-shell>.booking-card{border:0!important;background:transparent!important;box-shadow:none!important;margin:0!important;border-radius:10px!important;min-width:0}
+#app .atm-task-shell[data-power-visible="1"]>.item,#app .atm-task-shell[data-power-visible="1"]>.booking-card{padding-right:52px}
+#app .atm-task-shell[data-employee="1"]:not([data-state="active"]){border:1px solid #cbd6cd;background:#e8ede9;box-shadow:none}
+#app .atm-task-shell[data-employee="1"]:not([data-state="active"])>.item,#app .atm-task-shell[data-employee="1"]:not([data-state="active"])>.booking-card,#app .atm-task-shell[data-employee="1"]:not([data-state="active"])>.atm-deadline{opacity:.55}
+#app .atm-task-shell:not([data-state="active"]) .details strong,#app .atm-task-shell:not([data-state="active"]) .booking-name,#app .atm-task-shell:not([data-state="active"]) .numb{color:#496354!important;-webkit-text-fill-color:#496354!important}
+#app .atm-task-shell>.atm-deadline{margin:0 12px 10px 39px;padding:7px 0 0;border:0;border-top:1px solid #ceded2;border-radius:0;background:transparent;color:#245039}
+#app .atm-task-shell>.atm-deadline[data-expired="1"]{border-top-color:#ddc5bf;background:transparent;color:#9b3228}
+#app .atm-task-shell .atm-deadline-count{font-size:12px;letter-spacing:0}
+#app .atm-task-shell .atm-deadline-date{display:flex;flex-direction:column;gap:2px;margin-top:7px;background:#ffffffa6;border-radius:7px;padding:6px 8px;line-height:1.35}
+#app .atm-task-shell .atm-deadline-date small{font-size:10px;color:#56735f}
+#app .atm-task-shell .atm-deadline-date strong{font-size:12px;color:#153727}
+#app .atm-task-shell .atm-deadline-date b{font-size:15px;color:#08634c}
+#app .atm-task-shell .atm-deadline-pie,#app .atm-task-shell .atm-deadline[data-expired="1"] .atm-deadline-pie{background:conic-gradient(var(--atm-pie-color,#159447) var(--atm-elapsed,0%),#e5eee7 0)}
+#app .atm-task-shell>.atm-deadline-admin-empty{display:block;margin:0 12px 10px 39px}
+#app .atm-deadline-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:3px}
+#app .atm-deadline-actions button{flex:1;min-width:105px}
+#app .atm-task-power{position:absolute;right:10px;top:9px;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;padding:0;background:#206e77;color:#fff;border:1px solid #b1d8ca;box-shadow:0 2px 6px #206e7720;z-index:2;touch-action:manipulation;transition:background .4s,color .4s,box-shadow .4s}
+#app .atm-task-power svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+#app .atm-task-power[data-locked="1"]{background:#f1f4f1;color:#718c79;border-color:#9eafa3;animation:atmTaskBreath 2.6s ease-in-out infinite}
+#app .atm-task-power:disabled{animation:none;opacity:.45}
+#app .atm-task-power:focus-visible{outline:3px solid #8ecab0;outline-offset:2px}
+#app .atm-task-lock{display:flex;align-items:center;gap:5px;margin:0 12px 10px 39px;font-size:11px;color:#63776a;font-weight:800}
+#app .atm-task-lock svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#app .atm-task-shell [hidden]{display:none!important}
+@keyframes atmTaskBreath{0%,100%{opacity:.60;box-shadow:0 0 0 0 #81b59b00}50%{opacity:1;box-shadow:0 0 0 4px #81b59b35}}
+#app .modalwrap.atm-task-full{padding:0;align-items:stretch;justify-content:stretch;background:#fff;z-index:180;animation:atmTaskFadeIn .42s ease both}
+#app .modalwrap.atm-task-full>.dialog{height:100%;max-height:none;min-height:0;width:100%;border-radius:0;padding:0;gap:0;overflow:auto;color:#27383f}
+#app .atm-task-full .atm-finish-heading{padding:22px 17px 18px;background:#f7f9fa;border-bottom:1px solid #dce4e6}
+#app .atm-task-full .atm-finish-heading h3{font-size:21px;line-height:1.3;color:#26353e}
+#app .atm-task-full .atm-finish-heading .sub{font-size:14px;color:#53616b;margin-top:5px}
+#app .atm-task-full .atm-finish-body{display:flex;flex-direction:column;flex:1;min-height:0;gap:16px;padding:19px 17px max(20px,env(safe-area-inset-bottom))}
+#app .atm-task-full .atm-finish-body p{margin:0;font-size:15px;line-height:1.6}
+#app .atm-task-full .atm-finish-actions{margin-top:auto;display:flex;flex-direction:column;gap:10px}
+#app .atm-task-full .atm-finish-actions .btn{min-height:46px;font-size:14px;white-space:normal;line-height:1.4}
+#app .atm-task-full .atm-finish-actions .two>.btn{min-width:0}
+#app .atm-task-full .atm-finish-actions .atm-correction-choice{min-height:72px}
+#app .atm-task-full .atm-finish-actions .btn:not(.ghost){background:#206e77;border-color:#206e77}
+#app .atm-task-full .atm-token-view{text-align:center;padding:18px;background:#f1f6f3;border-radius:12px}
+#app .atm-task-full .atm-token-view strong{display:block;font-size:30px;color:#206e77}
+#app .modalwrap.atm-task-full.atm-task-leaving{animation:atmTaskFadeOut .2s ease both}
+#app .atm-task-leaving .dialog{pointer-events:none}
+@keyframes atmTaskFadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes atmTaskFadeOut{to{opacity:0;transform:translateY(4px)}}
+@media(prefers-reduced-motion:reduce){#app .atm-task-full,#app .atm-task-full.atm-task-leaving,#app .atm-task-power{animation:none!important;transition:none!important}}
 </style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script><link href="./manifest.webmanifest" rel="manifest"/><meta content="#0e604d" name="theme-color"/></head><body><div id="app"><div class="header" id="head"></div><div class="content" id="main"></div><div class="nav" id="nav"></div><div id="atm-pull-refresh" class="atm-pull-indicator" role="status" aria-live="polite" aria-hidden="true"><span class="atm-pull-symbol">↓</span><span class="atm-pull-label">Deslizá para actualizar</span></div><div id="overlay"></div><div class="floattrash" id="trash">🗑</div><div class="toast" id="toast"></div></div>
 <script>
 (()=>{
@@ -858,7 +910,7 @@ function atmFocusLongPressed(date,focus){
  if(atmDeadlineBlocked(next.kind==='standalone'?null:next.record))return false;
  const previousId=atmActiveWorkId(me.id,date);
  const previous=atmFocusItemForEmployee(date,previousId);
- if(previousId===ATM_OTHER_FOCUS){
+ if(previousId===ATM_OTHER_FOCUS||(previous&&previous.kind!=='standalone'&&atmTaskLocked(previous.record))){
   return atmMarkActiveWork(date,focus);
  }
  if(previousId===focus||!previous){
@@ -986,16 +1038,22 @@ function workWithLogsHTML(item,i,editable,draggable){
  const record=item.record,focus=atmFocusWorkId(item);
  const active=focus&&atmActiveWorkId(record.userId,record.day)===focus;
  const selectable=focus&&me?.role!=='admin'&&me?.id===record.userId;
- const adminSelectable=focus&&me?.role==='admin'&&editable&&
-  staff().some(u=>u.id===record.userId);
+ const adminSelectable=focus&&me?.role==='admin'&&editable&&staff().some(u=>u.id===record.userId);
  const card=workHTML(item,i,editable,draggable);
  const numberedCard=adminSelectable?card.replace('<span class="numb">',
   '<span class="numb atm-admin-focus-number" role="button" tabindex="0" aria-label="Marcar como actividad actual" title="Tocar el número para seleccionar esta actividad">'):card;
- return '<div class="atm-work-with-log"><div class="atm-focus-surface'+(active?' atm-focus-active':'')+'"'+
+ const own=atmDeadlineOwn(record),activeToday=!!active&&own&&record.day===atmActualToday();
+ const managed=item.kind!=='standalone'&&!!record.uuid&&record.userId!=null;
+ const integrated=managed&&(!!record.atmDueAt||!!record.atmFinishedAt||activeToday||me?.role==='admin');
+ const state=integrated?atmTaskState(record):'active';
+ const power=integrated&&own&&(activeToday||!!record.atmDueAt||!!record.atmFinishedAt);
+ const visible=power&&(activeToday||state!=='active');
+ const shell=integrated?' data-atm-task-shell="'+esc(record.uuid)+'" data-state="'+state+'" data-employee="'+(own?'1':'0')+'" data-active-today="'+(activeToday?'1':'0')+'" data-power-visible="'+(visible?'1':'0')+'" data-kind="'+esc(item.kind)+'"'+(item.kind==='booking'?' data-priority="'+esc(record.priority)+'"':''):'';
+ return '<div class="atm-work-with-log"><div class="atm-focus-surface'+(active?' atm-focus-active':'')+(integrated?' atm-task-shell':'')+'"'+
   (selectable?' data-atm-focus="'+esc(focus)+'" data-atm-focus-day="'+esc(record.day)+'"':'')+
   (adminSelectable?' data-atm-admin-focus="'+esc(focus)+'" data-atm-admin-owner="'+record.userId+
-    '" data-atm-admin-day="'+esc(record.day)+'"':'')+
-  '>'+numberedCard+'</div>'+atmDeadlineCard(item)+taskLogsHTML(item)+'</div>';
+    '" data-atm-admin-day="'+esc(record.day)+'"':'')+shell+
+  '>'+numberedCard+(integrated?atmDeadlineCard(item)+atmTaskDecor(record,power,visible,state):'')+'</div>'+taskLogsHTML(item)+'</div>';
 }
 const bookedFor=(id,d)=>appointments.filter(a=>a.userId===Number(id)&&a.day===d).sort((a,b)=>(a.order??9999)-(b.order??9999)||a.id-b.id);
 const pendingBookings=(d)=>appointments.filter(a=>a.userId===null&&a.day===d).sort((a,b)=>a.id-b.id);
@@ -1504,7 +1562,7 @@ document.addEventListener('keydown',e=>{
 
 function modalHTML(){if(!dialog)return '';let h='',sheet=false;
 const footer='<button class="btn ghost" data-a="close">Cancelar</button>';
-if(dialog.type==='atm-deadline-admin'||dialog.type==='atm-deadline-reactivate'){
+if(atmTaskDialogType(dialog.type)){
   h=atmDeadlineModal(dialog);
  }
  else if(dialog.type==='accountmenu'){
@@ -1889,7 +1947,7 @@ else if(['deleteDay','deleteJob','deleteCopiedLogs'].includes(dialog.type)){
  '<div class="row"><button type="button" class="btn ghost" data-a="close" '+(dialog.processing?'disabled':'')+'>Cancelar</button>'+
  '<button type="button" class="btn red" data-a="deleteconfirm" '+(dialog.processing||(!n&&!nLogs)?'disabled':'')+'>Eliminar selección</button></div>';
 }
-return '<div class="modalwrap '+(sheet?'sheet':'')+(dialog.type==='accountmenu'?' atm-menu-wrap':'')+'"><div class="dialog">'+h+'</div></div>'}
+return '<div class="modalwrap '+(sheet?'sheet':'')+(dialog.type==='accountmenu'?' atm-menu-wrap':'')+(atmTaskFullType(dialog.type)?' atm-task-full':'')+'"><div class="dialog"'+(atmTaskFullType(dialog.type)?' role="dialog" aria-modal="true"':'')+'>'+h+'</div></div>'}
 let historyBooted=false,suppressHistory=false,lastHistoryJSON='',historyRoute='';
 let historyGroup=Number(history.state?.atmHistoryGroup)||0,highlightNotice=null,highlightWork=null;
 // Only genuine screen and modal transitions create browser history entries.
@@ -2544,6 +2602,7 @@ function atmCancelFocusHold(){
 }
 root.addEventListener('pointerdown',e=>{
  if(!me||me.role==='admin'||tab!=='calendar'||dialog||e.button!==0)return;
+ if(e.target.closest('[data-atm-deadline-action]'))return;
  const card=e.target.closest('[data-atm-focus]');
  if(!card)return;
  atmCancelFocusHold();
@@ -2902,7 +2961,7 @@ async function atmLogGetPreview(page){
 async function atmLogDeleteNow(page){
  if(!page?.preview?.ids?.length||dialog!==page||!me?.uuid||page.loading)return;
  if(me.role!=='admin'){
-  const record=page.preview.ids.map(id=>atmDeadlineFromReference(logs.find(l=>l.uuid===id))).find(atmDeadlineExpired);
+  const record=page.preview.ids.map(id=>atmDeadlineFromReference(logs.find(l=>l.uuid===id))).find(atmTaskLocked);
   if(atmDeadlineBlocked(record))return;
  }
  if(!cloud.ready||cloud.busy||cloud.loading||cloud.retryPaused||draftSignature()!==cloud.revision){
@@ -3517,7 +3576,7 @@ function loadUIReadState(){seen={};readBy={};drafts={};try{const d=JSON.parse(lo
 function localWorkRows(){return [...jobs.map(x=>({item:x,kind:'job'})),...appointments.map(x=>({item:x,kind:'booking'}))];}
 function rowForWork(x,kind){return {id:x.uuid,kind,vehicle:kind==='job'?x.title:x.vehicle,instructions:kind==='job'?x.detail:x.instructions,service_type:kind==='booking'?(x.serviceType||'Por definir'):'Por definir',service_other:kind==='booking'?(x.serviceOther||''):'',priority:kind==='booking'?(x.priority||'yellow'):'yellow',reception_start:kind==='booking'?(x.receptionStart||null):null,reception_end:kind==='booking'?(x.receptionEnd||null):null,work_day:x.day,assigned_to:uuidFor(x.userId),sort_order:x.order??null};}
 function uiForWork(row){const kind=row.kind,known=cloud.workUiIds.get(row.id);/* Si un vehículo cambió de booking a job, no reutilizar su número interno
-   de agendamiento: puede coincidir con el número de otra tarea. */const num=known?.kind===kind?known.id:(kind==='job'?nextJob++:nextAppointment++);cloud.workUiIds.set(row.id,{id:num,kind});const basic={uuid:row.id,userId:uiFor(row.assigned_to),day:row.work_day,order:row.sort_order??null,atmDueAt:row.atm_due_at||null,atmWindowStartedAt:row.atm_window_started_at||null,atmTokens:row.atm_tokens_remaining??null};if(kind==='job')return {...basic,id:num,title:row.vehicle,detail:row.instructions||''};return {...basic,id:num,vehicle:row.vehicle,instructions:row.instructions||'',serviceType:row.service_type||'Por definir',serviceOther:row.service_other||'',priority:row.priority||'yellow',receptionStart:row.reception_start?String(row.reception_start).slice(0,5):null,receptionEnd:row.reception_end?String(row.reception_end).slice(0,5):null};}
+   de agendamiento: puede coincidir con el número de otra tarea. */const num=known?.kind===kind?known.id:(kind==='job'?nextJob++:nextAppointment++);cloud.workUiIds.set(row.id,{id:num,kind});const basic={uuid:row.id,userId:uiFor(row.assigned_to),day:row.work_day,order:row.sort_order??null,atmDueAt:row.atm_due_at||null,atmWindowStartedAt:row.atm_window_started_at||null,atmTokens:row.atm_tokens_remaining??null,atmFinishedAt:row.atm_finished_at||null,atmFinishCorrection:row.atm_finish_correction??null};if(kind==='job')return {...basic,id:num,title:row.vehicle,detail:row.instructions||''};return {...basic,id:num,vehicle:row.vehicle,instructions:row.instructions||'',serviceType:row.service_type||'Por definir',serviceOther:row.service_other||'',priority:row.priority||'yellow',receptionStart:row.reception_start?String(row.reception_start).slice(0,5):null,receptionEnd:row.reception_end?String(row.reception_end).slice(0,5):null};}
 const ATM_OUTBOX_PREFIX='atm_manager_pending_';
 function atmOutboxKey(id){return ATM_OUTBOX_PREFIX+id;}
 function atmReadOutbox(id){try{const rows=JSON.parse(localStorage.getItem(atmOutboxKey(id))||'[]');return Array.isArray(rows)?rows:[]}catch(_){return []}}
